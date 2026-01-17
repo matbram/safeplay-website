@@ -30,9 +30,9 @@ const features = [
   },
   {
     icon: Clock,
-    title: "Instant Caching",
+    title: "Lightning Fast",
     description:
-      "Once a video is filtered, the results are cached. Subsequent views are instant with no processing wait.",
+      "Videos you've already filtered play instantly. No waiting — just press play and enjoy clean content.",
     color: "bg-emerald-500",
   },
   {

@@ -79,7 +79,7 @@ const plans = [
     name: "Free",
     price_cents: 0,
     credits_per_month: 30,
-    features: ["30 credits/month", "Mute or bleep", "Cached videos"],
+    features: ["30 credits/month", "Mute or bleep", "Re-watch free"],
     icon: Star,
   },
   {

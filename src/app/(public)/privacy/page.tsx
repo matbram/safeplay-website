@@ -63,7 +63,7 @@ export default function PrivacyPage() {
               </p>
               <ul>
                 <li>We do not store the content of videos you watch</li>
-                <li>Filter results are cached to improve performance and reduce processing time</li>
+                <li>Filter results are stored securely so you can re-watch videos instantly</li>
                 <li>Your viewing history is private and only visible to you (or parents in family accounts)</li>
                 <li>We never share your viewing activity with third parties for advertising purposes</li>
               </ul>

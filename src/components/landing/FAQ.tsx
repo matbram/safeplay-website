@@ -32,7 +32,7 @@ const faqs = [
   {
     question: "What happens if I run out of credits?",
     answer:
-      "If you run out of credits, you can either wait until your next billing cycle when credits reset, or upgrade to a higher plan for more credits immediately. We'll notify you when you're running low so you can plan ahead.",
+      "No problem! You have several options: purchase a one-time credit top-up pack, upgrade to a higher plan for more monthly credits, or wait until your next billing cycle. Top-up credits are priced slightly higher than plan credits but never expire. We'll notify you when you're running low.",
   },
   {
     question: "Is there a free trial?",

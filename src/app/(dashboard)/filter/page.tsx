@@ -87,7 +87,7 @@ export default function FilterPage() {
 
     // Simulate processing stages
     const stages = [
-      { progress: 10, message: "Checking cache..." },
+      { progress: 10, message: "Preparing video..." },
       { progress: 25, message: "Downloading video..." },
       { progress: 50, message: "Extracting audio..." },
       { progress: 75, message: "Analyzing audio..." },
