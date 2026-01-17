@@ -1,7 +1,6 @@
 "use client";
 
-import { motion } from "framer-motion";
-import { Star } from "lucide-react";
+import { Star, Quote, MessageCircle } from "lucide-react";
 
 const testimonials = [
   {
@@ -10,6 +9,8 @@ const testimonials = [
     author: "Sarah M.",
     role: "Mother of 3",
     rating: 5,
+    initial: "S",
+    color: "bg-red-500",
   },
   {
     content:
@@ -17,6 +18,8 @@ const testimonials = [
     author: "Michael T.",
     role: "High School Teacher",
     rating: 5,
+    initial: "M",
+    color: "bg-blue-500",
   },
   {
     content:
@@ -24,6 +27,8 @@ const testimonials = [
     author: "David K.",
     role: "Content Creator",
     rating: 5,
+    initial: "D",
+    color: "bg-purple-500",
   },
   {
     content:
@@ -31,6 +36,8 @@ const testimonials = [
     author: "Pastor James R.",
     role: "Youth Ministry Leader",
     rating: 5,
+    initial: "J",
+    color: "bg-green-500",
   },
   {
     content:
@@ -38,6 +45,8 @@ const testimonials = [
     author: "Jennifer L.",
     role: "Parent",
     rating: 5,
+    initial: "J",
+    color: "bg-amber-500",
   },
   {
     content:
@@ -45,59 +54,62 @@ const testimonials = [
     author: "Robert H.",
     role: "Office Manager",
     rating: 5,
+    initial: "R",
+    color: "bg-pink-500",
   },
 ];
 
 export function Testimonials() {
   return (
-    <section className="py-20 lg:py-32">
+    <section className="section">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         {/* Section Header */}
         <div className="text-center max-w-3xl mx-auto">
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true }}
-            transition={{ duration: 0.5 }}
-          >
-            <h2 className="text-3xl sm:text-4xl lg:text-5xl font-bold text-foreground">
-              Loved by <span className="gradient-text">Families Everywhere</span>
-            </h2>
-            <p className="mt-4 text-lg text-muted-foreground">
-              Join thousands of families, educators, and organizations who trust SafePlay for clean content.
-            </p>
-          </motion.div>
+          <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-primary/10 text-primary text-sm font-medium mb-4">
+            <MessageCircle className="w-4 h-4" />
+            Customer Stories
+          </div>
+          <h2 className="heading-1 text-foreground">
+            Loved by <span className="gradient-text">Families Everywhere</span>
+          </h2>
+          <p className="mt-4 text-lg text-muted-foreground">
+            Join thousands of families, educators, and organizations who trust SafePlay for clean content.
+          </p>
         </div>
 
         {/* Testimonials Grid */}
         <div className="mt-16 grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
           {testimonials.map((testimonial, index) => (
-            <motion.div
+            <div
               key={testimonial.author}
-              initial={{ opacity: 0, y: 20 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true }}
-              transition={{ duration: 0.5, delay: index * 0.1 }}
-              className="p-6 rounded-2xl bg-card border hover:shadow-lg transition-shadow"
+              className="group relative p-6 rounded-2xl bg-card border border-border hover:border-primary/30 hover:shadow-lg transition-all duration-300 card-hover"
+              style={{ animationDelay: `${index * 0.1}s` }}
             >
+              {/* Quote Icon */}
+              <div className="absolute top-4 right-4 opacity-10 group-hover:opacity-20 transition-opacity">
+                <Quote className="w-8 h-8 text-primary" />
+              </div>
+
               {/* Stars */}
-              <div className="flex gap-1">
+              <div className="flex gap-0.5">
                 {[...Array(testimonial.rating)].map((_, i) => (
                   <Star
                     key={i}
-                    className="w-5 h-5 fill-warning text-warning"
+                    className="w-4 h-4 fill-primary text-primary"
                   />
                 ))}
               </div>
 
               {/* Content */}
-              <p className="mt-4 text-foreground">
+              <p className="mt-4 text-foreground leading-relaxed">
                 &ldquo;{testimonial.content}&rdquo;
               </p>
 
               {/* Author */}
               <div className="mt-6 flex items-center gap-3">
-                <div className="w-10 h-10 rounded-full bg-gradient-to-br from-primary to-secondary" />
+                <div className={`w-10 h-10 rounded-full ${testimonial.color} flex items-center justify-center text-white font-semibold`}>
+                  {testimonial.initial}
+                </div>
                 <div>
                   <p className="font-semibold text-foreground">
                     {testimonial.author}
@@ -107,32 +119,37 @@ export function Testimonials() {
                   </p>
                 </div>
               </div>
-            </motion.div>
+            </div>
           ))}
         </div>
 
         {/* Stats */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true }}
-          transition={{ duration: 0.5 }}
-          className="mt-20 grid grid-cols-2 lg:grid-cols-4 gap-8 p-8 rounded-2xl bg-muted/50"
-        >
-          {[
-            { value: "10,000+", label: "Active Users" },
-            { value: "500,000+", label: "Videos Filtered" },
-            { value: "99.5%", label: "Detection Accuracy" },
-            { value: "4.9/5", label: "Average Rating" },
-          ].map((stat) => (
-            <div key={stat.label} className="text-center">
-              <p className="text-3xl lg:text-4xl font-bold gradient-text">
-                {stat.value}
-              </p>
-              <p className="mt-1 text-sm text-muted-foreground">{stat.label}</p>
-            </div>
-          ))}
-        </motion.div>
+        <div className="mt-20 relative overflow-hidden rounded-2xl">
+          {/* Background */}
+          <div className="absolute inset-0 bg-[#0F0F0F]" />
+          <div className="absolute inset-0 bg-gradient-to-r from-primary/10 via-transparent to-primary/10" />
+
+          {/* Content */}
+          <div className="relative z-10 grid grid-cols-2 lg:grid-cols-4 gap-8 p-8 lg:p-12">
+            {[
+              { value: "10,000+", label: "Active Users" },
+              { value: "1M+", label: "Videos Filtered" },
+              { value: "99.5%", label: "Detection Accuracy" },
+              { value: "4.9/5", label: "Average Rating" },
+            ].map((stat) => (
+              <div key={stat.label} className="text-center">
+                <p className="text-3xl lg:text-4xl font-bold text-primary">
+                  {stat.value}
+                </p>
+                <p className="mt-2 text-sm text-white/60">{stat.label}</p>
+              </div>
+            ))}
+          </div>
+
+          {/* Decorative elements */}
+          <div className="absolute top-0 right-0 w-64 h-64 bg-primary/10 rounded-full blur-3xl" />
+          <div className="absolute bottom-0 left-0 w-48 h-48 bg-primary/10 rounded-full blur-3xl" />
+        </div>
       </div>
     </section>
   );

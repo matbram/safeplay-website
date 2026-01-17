@@ -1,143 +1,141 @@
 "use client";
 
-import { motion } from "framer-motion";
-import { Chrome, Link as LinkIcon, Sparkles, Play } from "lucide-react";
+import { Chrome, Link as LinkIcon, Sparkles, Play, ArrowRight } from "lucide-react";
 
 const steps = [
   {
-    number: "01",
+    number: "1",
     icon: Chrome,
-    title: "Install the Extension",
+    title: "Install Extension",
     description:
-      "Add our free Chrome extension to your browser. It takes just one click and works immediately.",
+      "Add our free Chrome extension with one click. No sign up required to try it out.",
+    color: "bg-blue-500",
   },
   {
-    number: "02",
+    number: "2",
     icon: LinkIcon,
-    title: "Find a Video",
+    title: "Open Any Video",
     description:
-      "Browse YouTube normally. When you find a video you want to watch, click the SafePlay button.",
+      "Browse YouTube as usual. Click the SafePlay icon when you find a video to filter.",
+    color: "bg-purple-500",
   },
   {
-    number: "03",
+    number: "3",
     icon: Sparkles,
-    title: "AI Processes Audio",
+    title: "AI Processes",
     description:
-      "Our AI transcribes the audio with character-level precision, identifying all profanity in seconds.",
+      "Our AI analyzes the audio in seconds, identifying profanity with 99.5% accuracy.",
+    color: "bg-amber-500",
   },
   {
-    number: "04",
+    number: "4",
     icon: Play,
-    title: "Watch Clean Content",
+    title: "Watch Clean",
     description:
-      "Enjoy your video with profanity automatically muted or bleeped. It's that simple.",
+      "Enjoy your video with all profanity automatically muted or bleeped out.",
+    color: "bg-primary",
   },
 ];
 
 export function HowItWorks() {
   return (
-    <section id="how-it-works" className="py-20 lg:py-32">
+    <section id="how-it-works" className="section">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         {/* Section Header */}
         <div className="text-center max-w-3xl mx-auto">
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true }}
-            transition={{ duration: 0.5 }}
-          >
-            <h2 className="text-3xl sm:text-4xl lg:text-5xl font-bold text-foreground">
-              How SafePlay <span className="gradient-text">Works</span>
-            </h2>
-            <p className="mt-4 text-lg text-muted-foreground">
-              Clean YouTube viewing in four simple steps. No complicated setup, no technical knowledge required.
-            </p>
-          </motion.div>
+          <h2 className="heading-1 text-foreground">
+            How it <span className="gradient-text">works</span>
+          </h2>
+          <p className="mt-4 text-lg text-muted-foreground">
+            Start watching clean content in under a minute. No complicated setup required.
+          </p>
         </div>
 
-        {/* Steps */}
-        <div className="mt-16 relative">
-          {/* Connection Line */}
-          <div className="hidden lg:block absolute top-24 left-0 right-0 h-0.5 bg-gradient-to-r from-primary via-secondary to-primary" />
-
-          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-8 lg:gap-6">
+        {/* Steps - Horizontal layout */}
+        <div className="mt-16">
+          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-6">
             {steps.map((step, index) => (
-              <motion.div
-                key={step.number}
-                initial={{ opacity: 0, y: 20 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true }}
-                transition={{ duration: 0.5, delay: index * 0.1 }}
-                className="relative"
-              >
-                {/* Step Card */}
-                <div className="relative z-10 p-6 rounded-2xl bg-card border hover:border-primary/50 hover:shadow-lg transition-all duration-300">
-                  {/* Number Badge */}
-                  <div className="absolute -top-4 left-6 px-3 py-1 rounded-full bg-primary text-white text-sm font-bold">
+              <div key={step.number} className="relative group">
+                {/* Card */}
+                <div className="relative p-6 rounded-2xl bg-card border border-border hover:border-primary/30 transition-all duration-300 h-full">
+                  {/* Step number */}
+                  <div className={`w-12 h-12 rounded-2xl ${step.color} flex items-center justify-center text-white font-bold text-xl shadow-lg`}>
                     {step.number}
                   </div>
 
-                  {/* Icon */}
-                  <div className="mt-4 w-14 h-14 rounded-xl bg-primary-light flex items-center justify-center">
-                    <step.icon className="w-7 h-7 text-primary" />
-                  </div>
-
                   {/* Content */}
-                  <h3 className="mt-4 text-lg font-semibold text-foreground">
+                  <h3 className="mt-5 text-lg font-semibold text-foreground">
                     {step.title}
                   </h3>
-                  <p className="mt-2 text-muted-foreground text-sm">
+                  <p className="mt-2 text-muted-foreground text-sm leading-relaxed">
                     {step.description}
                   </p>
+
+                  {/* Icon in corner */}
+                  <div className="absolute top-6 right-6 opacity-10 group-hover:opacity-20 transition-opacity">
+                    <step.icon className="w-16 h-16 text-foreground" />
+                  </div>
                 </div>
 
-                {/* Arrow (desktop only) */}
+                {/* Arrow connector (desktop only) */}
                 {index < steps.length - 1 && (
-                  <div className="hidden lg:block absolute top-24 -right-3 z-20">
-                    <div className="w-6 h-6 rounded-full bg-primary flex items-center justify-center">
-                      <svg
-                        className="w-3 h-3 text-white"
-                        fill="none"
-                        viewBox="0 0 24 24"
-                        stroke="currentColor"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={3}
-                          d="M9 5l7 7-7 7"
-                        />
-                      </svg>
+                  <div className="hidden lg:flex absolute top-1/2 -right-3 -translate-y-1/2 z-10">
+                    <div className="w-6 h-6 rounded-full bg-primary/10 flex items-center justify-center">
+                      <ArrowRight className="w-3 h-3 text-primary" />
                     </div>
                   </div>
                 )}
-              </motion.div>
+              </div>
             ))}
           </div>
         </div>
 
         {/* Demo Video Section */}
-        <motion.div
-          id="demo"
-          initial={{ opacity: 0, y: 20 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true }}
-          transition={{ duration: 0.5 }}
-          className="mt-20"
-        >
-          <div className="relative aspect-video max-w-4xl mx-auto rounded-2xl overflow-hidden border shadow-2xl bg-slate-900">
-            <div className="absolute inset-0 flex items-center justify-center">
-              <button className="group flex items-center gap-3 px-6 py-3 rounded-full bg-primary text-white font-semibold hover:bg-primary-hover transition-colors shadow-lg">
-                <div className="w-12 h-12 rounded-full bg-white/20 flex items-center justify-center group-hover:bg-white/30 transition-colors">
-                  <Play className="w-6 h-6 ml-1" />
+        <div id="demo" className="mt-20">
+          <div className="relative max-w-4xl mx-auto">
+            {/* Glow effect */}
+            <div className="absolute -inset-4 bg-gradient-to-r from-primary/10 via-primary/5 to-primary/10 rounded-3xl blur-2xl" />
+
+            {/* Video Container */}
+            <div className="relative aspect-video rounded-2xl overflow-hidden border border-border bg-[#0F0F0F] shadow-2xl">
+              {/* Fake video thumbnail */}
+              <div className="absolute inset-0 bg-gradient-to-br from-slate-800 via-slate-900 to-black">
+                {/* Pattern */}
+                <div className="absolute inset-0 opacity-20">
+                  <div className="absolute top-1/3 left-1/4 w-48 h-48 rounded-full bg-primary/20 blur-3xl" />
+                  <div className="absolute bottom-1/3 right-1/4 w-64 h-32 rounded-full bg-primary/10 blur-3xl" />
                 </div>
-                Watch How It Works
-              </button>
+              </div>
+
+              {/* Overlay gradient */}
+              <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-black/20" />
+
+              {/* Play Button */}
+              <div className="absolute inset-0 flex flex-col items-center justify-center">
+                <button className="group flex items-center gap-4">
+                  <div className="w-20 h-20 rounded-full bg-primary flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform glow-red">
+                    <Play className="w-8 h-8 text-white ml-1" fill="white" />
+                  </div>
+                </button>
+                <p className="mt-4 text-white font-medium text-lg">See SafePlay in Action</p>
+                <p className="mt-1 text-white/60 text-sm">2 minute demo</p>
+              </div>
+
+              {/* Video title bar */}
+              <div className="absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-black to-transparent">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-full bg-primary flex items-center justify-center">
+                    <span className="text-white font-bold text-sm">SP</span>
+                  </div>
+                  <div>
+                    <p className="text-white font-medium">SafePlay Demo - How to Filter YouTube Videos</p>
+                    <p className="text-white/60 text-sm">SafePlay Official • 50K views</p>
+                  </div>
+                </div>
+              </div>
             </div>
-            {/* Placeholder overlay */}
-            <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent" />
           </div>
-        </motion.div>
+        </div>
       </div>
     </section>
   );

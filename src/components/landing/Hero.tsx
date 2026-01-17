@@ -2,194 +2,222 @@
 
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Play, Shield, Zap, Check } from "lucide-react";
-import { motion } from "framer-motion";
+import { Play, Shield, Check, Volume2, VolumeX, Star } from "lucide-react";
 
 export function Hero() {
   return (
-    <section className="relative pt-32 pb-20 lg:pt-40 lg:pb-32 hero-gradient overflow-hidden">
-      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-        <div className="grid lg:grid-cols-2 gap-12 lg:gap-16 items-center">
-          {/* Left Column - Content */}
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5 }}
-            className="text-center lg:text-left"
-          >
-            {/* Badge */}
-            <Badge variant="outline" className="mb-6 px-4 py-1.5 text-sm">
-              <Zap className="w-3.5 h-3.5 mr-1.5 text-primary" />
-              AI-Powered Profanity Filtering
-            </Badge>
+    <section className="relative pt-24 pb-16 lg:pt-32 lg:pb-24 overflow-hidden">
+      {/* Background gradient */}
+      <div className="absolute inset-0 hero-gradient" />
 
-            {/* Headline */}
-            <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold tracking-tight text-foreground leading-[1.1]">
-              Watch YouTube{" "}
-              <span className="gradient-text">Without the Profanity</span>
-            </h1>
+      {/* Animated background shapes */}
+      <div className="absolute top-20 left-10 w-64 h-64 bg-primary/5 rounded-full blur-3xl animate-float" />
+      <div className="absolute bottom-20 right-10 w-80 h-80 bg-primary/5 rounded-full blur-3xl animate-float" style={{ animationDelay: "1s" }} />
 
-            {/* Subheadline */}
-            <p className="mt-6 text-lg sm:text-xl text-muted-foreground max-w-xl mx-auto lg:mx-0">
-              SafePlay automatically mutes or bleeps profanity in YouTube videos using advanced AI transcription. Perfect for families, educators, and workplaces.
-            </p>
-
-            {/* Key Benefits */}
-            <div className="mt-8 flex flex-col sm:flex-row gap-4 justify-center lg:justify-start">
-              <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                <Check className="w-5 h-5 text-success" />
-                <span>No downloads required</span>
-              </div>
-              <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                <Check className="w-5 h-5 text-success" />
-                <span>Works instantly</span>
-              </div>
-              <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                <Check className="w-5 h-5 text-success" />
-                <span>Character-level precision</span>
-              </div>
+      <div className="relative mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+        {/* Main Content */}
+        <div className="text-center max-w-4xl mx-auto">
+          {/* Trust Badge */}
+          <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-primary/10 border border-primary/20 mb-8 animate-fade-in-down">
+            <div className="flex items-center gap-0.5">
+              {[1, 2, 3, 4, 5].map((i) => (
+                <Star key={i} className="w-4 h-4 fill-primary text-primary" />
+              ))}
             </div>
+            <span className="text-sm font-medium text-foreground">Trusted by 10,000+ families</span>
+          </div>
 
-            {/* CTA Buttons */}
-            <div className="mt-10 flex flex-col sm:flex-row gap-4 justify-center lg:justify-start">
-              <Button size="xl" asChild>
-                <Link href="/signup">
-                  Start Filtering Free
-                  <Shield className="w-5 h-5 ml-2" />
-                </Link>
-              </Button>
-              <Button size="xl" variant="outline" asChild>
-                <Link href="#demo">
-                  <Play className="w-5 h-5 mr-2" />
-                  Watch Demo
-                </Link>
-              </Button>
-            </div>
+          {/* Headline */}
+          <h1 className="heading-display text-foreground animate-fade-in-up">
+            Watch YouTube
+            <br />
+            <span className="gradient-text">Without the Profanity</span>
+          </h1>
 
-            {/* Social Proof */}
-            <div className="mt-10 flex flex-col sm:flex-row items-center gap-6 justify-center lg:justify-start">
-              <div className="flex -space-x-3">
-                {[1, 2, 3, 4, 5].map((i) => (
-                  <div
-                    key={i}
-                    className="w-10 h-10 rounded-full bg-gradient-to-br from-primary to-secondary border-2 border-background"
-                  />
-                ))}
+          {/* Subheadline */}
+          <p className="mt-6 text-lg sm:text-xl text-muted-foreground max-w-2xl mx-auto animate-fade-in-up stagger-2">
+            SafePlay uses advanced AI to automatically mute or bleep profanity in any YouTube video.
+            Perfect for families, classrooms, and workplaces.
+          </p>
+
+          {/* Key Benefits */}
+          <div className="mt-8 flex flex-wrap items-center justify-center gap-6 animate-fade-in-up stagger-3">
+            <div className="flex items-center gap-2">
+              <div className="w-5 h-5 rounded-full bg-success/20 flex items-center justify-center">
+                <Check className="w-3 h-3 text-success" />
               </div>
-              <div className="text-sm text-muted-foreground">
-                <span className="font-semibold text-foreground">10,000+</span> families trust SafePlay
-              </div>
+              <span className="text-sm text-muted-foreground">Chrome Extension</span>
             </div>
-          </motion.div>
+            <div className="flex items-center gap-2">
+              <div className="w-5 h-5 rounded-full bg-success/20 flex items-center justify-center">
+                <Check className="w-3 h-3 text-success" />
+              </div>
+              <span className="text-sm text-muted-foreground">Instant Filtering</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="w-5 h-5 rounded-full bg-success/20 flex items-center justify-center">
+                <Check className="w-3 h-3 text-success" />
+              </div>
+              <span className="text-sm text-muted-foreground">99.5% Accuracy</span>
+            </div>
+          </div>
 
-          {/* Right Column - Visual */}
-          <motion.div
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={{ duration: 0.5, delay: 0.2 }}
-            className="relative"
-          >
-            <div className="relative mx-auto max-w-lg lg:max-w-none">
-              {/* Browser Mockup */}
-              <div className="rounded-2xl border bg-card shadow-2xl overflow-hidden">
-                {/* Browser Header */}
-                <div className="flex items-center gap-2 px-4 py-3 border-b bg-muted/50">
-                  <div className="flex gap-1.5">
-                    <div className="w-3 h-3 rounded-full bg-error/60" />
-                    <div className="w-3 h-3 rounded-full bg-warning/60" />
-                    <div className="w-3 h-3 rounded-full bg-success/60" />
+          {/* CTA Buttons */}
+          <div className="mt-10 flex flex-col sm:flex-row gap-4 justify-center animate-fade-in-up stagger-4">
+            <Button size="xl" className="text-base px-8" asChild>
+              <Link href="/signup">
+                Get Started Free
+                <Shield className="w-5 h-5 ml-2" />
+              </Link>
+            </Button>
+            <Button size="xl" variant="outline" className="text-base px-8 group" asChild>
+              <Link href="#demo">
+                <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center mr-2 group-hover:bg-primary/20 transition-colors">
+                  <Play className="w-4 h-4 text-primary ml-0.5" />
+                </div>
+                Watch Demo
+              </Link>
+            </Button>
+          </div>
+
+          {/* Credit info */}
+          <p className="mt-6 text-sm text-muted-foreground animate-fade-in-up stagger-5">
+            Start with <span className="font-semibold text-foreground">30 free credits</span> — no credit card required
+          </p>
+        </div>
+
+        {/* Video Player Mockup */}
+        <div className="mt-16 lg:mt-20 max-w-5xl mx-auto animate-fade-in-up stagger-5">
+          <div className="relative">
+            {/* Glow effect behind player */}
+            <div className="absolute -inset-4 bg-gradient-to-r from-primary/20 via-primary/10 to-primary/20 rounded-3xl blur-2xl opacity-50" />
+
+            {/* Browser Chrome */}
+            <div className="relative rounded-2xl border border-border bg-card shadow-2xl overflow-hidden">
+              {/* Browser Header */}
+              <div className="flex items-center gap-3 px-4 py-3 border-b border-border bg-muted/30">
+                <div className="flex gap-2">
+                  <div className="w-3 h-3 rounded-full bg-[#FF5F57]" />
+                  <div className="w-3 h-3 rounded-full bg-[#FFBD2E]" />
+                  <div className="w-3 h-3 rounded-full bg-[#28CA41]" />
+                </div>
+                <div className="flex-1 flex items-center justify-center">
+                  <div className="flex items-center gap-2 px-4 py-1.5 rounded-full bg-background/80 border border-border max-w-md w-full">
+                    <Shield className="w-4 h-4 text-primary flex-shrink-0" />
+                    <span className="text-sm text-muted-foreground truncate">youtube.com/watch?v=family-friendly-content</span>
                   </div>
-                  <div className="flex-1 mx-4">
-                    <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-background text-sm text-muted-foreground">
+                </div>
+                <div className="w-16" /> {/* Spacer for balance */}
+              </div>
+
+              {/* YouTube-style Video Player */}
+              <div className="relative aspect-video bg-[#0F0F0F]">
+                {/* Video Thumbnail Area */}
+                <div className="absolute inset-0 bg-gradient-to-br from-slate-800 via-slate-900 to-black">
+                  {/* Fake video content pattern */}
+                  <div className="absolute inset-0 opacity-30">
+                    <div className="absolute top-1/4 left-1/4 w-32 h-32 rounded-full bg-white/5" />
+                    <div className="absolute bottom-1/3 right-1/4 w-48 h-24 rounded-lg bg-white/5" />
+                  </div>
+                </div>
+
+                {/* Center Play Button - YouTube Style */}
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <div className="play-button glow-red">
+                    <svg viewBox="0 0 24 24" className="w-8 h-8">
+                      <path d="M8 5v14l11-7z" fill="white"/>
+                    </svg>
+                  </div>
+                </div>
+
+                {/* SafePlay Active Badge */}
+                <div className="absolute top-4 right-4 flex items-center gap-2 px-3 py-1.5 rounded-lg bg-primary text-white text-sm font-medium shadow-lg">
+                  <Shield className="w-4 h-4" />
+                  <span>SafePlay Active</span>
+                </div>
+
+                {/* Filter notification popup */}
+                <div className="absolute top-4 left-4 flex items-center gap-3 px-4 py-2.5 rounded-lg bg-black/80 backdrop-blur-sm border border-white/10 text-white animate-fade-in">
+                  <div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center">
+                    <VolumeX className="w-4 h-4 text-primary" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium">Profanity filtered</p>
+                    <p className="text-xs text-white/60">Word muted at 3:24</p>
+                  </div>
+                </div>
+
+                {/* YouTube-style Controls Bar */}
+                <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/90 via-black/50 to-transparent p-4">
+                  {/* Progress Bar */}
+                  <div className="relative h-1 bg-white/30 rounded-full mb-3 group cursor-pointer hover:h-1.5 transition-all">
+                    {/* Buffered */}
+                    <div className="absolute left-0 top-0 h-full w-4/5 bg-white/40 rounded-full" />
+                    {/* Progress */}
+                    <div className="absolute left-0 top-0 h-full w-[65%] bg-primary rounded-full">
+                      {/* Scrubber */}
+                      <div className="absolute right-0 top-1/2 -translate-y-1/2 w-3 h-3 bg-primary rounded-full scale-0 group-hover:scale-100 transition-transform" />
+                    </div>
+                    {/* Filtered sections markers */}
+                    <div className="absolute left-[22%] top-0 h-full w-1 bg-white rounded-full" />
+                    <div className="absolute left-[38%] top-0 h-full w-1 bg-white rounded-full" />
+                    <div className="absolute left-[56%] top-0 h-full w-1 bg-white rounded-full" />
+                  </div>
+
+                  {/* Controls */}
+                  <div className="flex items-center justify-between text-white">
+                    <div className="flex items-center gap-3">
+                      {/* Play/Pause */}
+                      <button className="p-1 hover:bg-white/10 rounded transition-colors">
+                        <Play className="w-6 h-6" fill="white" />
+                      </button>
+                      {/* Volume */}
+                      <button className="p-1 hover:bg-white/10 rounded transition-colors">
+                        <Volume2 className="w-5 h-5" />
+                      </button>
+                      {/* Time */}
+                      <span className="text-sm">8:24 / 12:47</span>
+                    </div>
+
+                    {/* Center - Filter info */}
+                    <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-white/10">
                       <Shield className="w-4 h-4 text-primary" />
-                      youtube.com/watch?v=...
+                      <span className="text-sm font-medium">3 words filtered</span>
                     </div>
-                  </div>
-                </div>
 
-                {/* Video Player Mockup */}
-                <div className="relative aspect-video bg-gradient-to-br from-slate-900 to-slate-800">
-                  {/* Play button overlay */}
-                  <div className="absolute inset-0 flex items-center justify-center">
-                    <div className="w-20 h-20 rounded-full bg-primary/90 flex items-center justify-center shadow-lg">
-                      <Play className="w-8 h-8 text-white ml-1" />
-                    </div>
-                  </div>
-
-                  {/* SafePlay Badge */}
-                  <div className="absolute top-4 right-4 flex items-center gap-2 px-3 py-1.5 rounded-full bg-primary text-white text-sm font-medium shadow-lg">
-                    <Shield className="w-4 h-4" />
-                    SafePlay Active
-                  </div>
-
-                  {/* Progress bar with muted sections */}
-                  <div className="absolute bottom-0 left-0 right-0 p-4">
-                    <div className="h-1.5 rounded-full bg-white/20 overflow-hidden">
-                      <div className="h-full w-2/3 bg-white/80 rounded-full relative">
-                        {/* Muted sections indicators */}
-                        <div className="absolute left-[20%] w-[5%] h-full bg-primary" />
-                        <div className="absolute left-[45%] w-[3%] h-full bg-primary" />
-                        <div className="absolute left-[60%] w-[4%] h-full bg-primary" />
+                    <div className="flex items-center gap-2">
+                      {/* Settings indicator */}
+                      <div className="text-xs bg-primary/20 text-primary px-2 py-1 rounded font-medium">
+                        MUTE MODE
                       </div>
-                    </div>
-                    <div className="flex items-center justify-between mt-2 text-white/80 text-xs">
-                      <span>12:34</span>
-                      <div className="flex items-center gap-2">
-                        <span className="text-primary font-medium">3 words filtered</span>
-                      </div>
-                      <span>18:45</span>
                     </div>
                   </div>
                 </div>
               </div>
-
-              {/* Floating Cards */}
-              <motion.div
-                initial={{ opacity: 0, x: -20 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ duration: 0.5, delay: 0.6 }}
-                className="absolute -left-8 top-1/4 hidden lg:block"
-              >
-                <div className="px-4 py-3 rounded-xl bg-card border shadow-lg">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-lg bg-success-light flex items-center justify-center">
-                      <Check className="w-5 h-5 text-success" />
-                    </div>
-                    <div>
-                      <p className="text-sm font-medium">Profanity Muted</p>
-                      <p className="text-xs text-muted-foreground">at 5:23</p>
-                    </div>
-                  </div>
-                </div>
-              </motion.div>
-
-              <motion.div
-                initial={{ opacity: 0, x: 20 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ duration: 0.5, delay: 0.8 }}
-                className="absolute -right-4 bottom-1/4 hidden lg:block"
-              >
-                <div className="px-4 py-3 rounded-xl bg-card border shadow-lg">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-lg bg-primary-light flex items-center justify-center">
-                      <Zap className="w-5 h-5 text-primary" />
-                    </div>
-                    <div>
-                      <p className="text-sm font-medium">AI Transcription</p>
-                      <p className="text-xs text-muted-foreground">99.5% accurate</p>
-                    </div>
-                  </div>
-                </div>
-              </motion.div>
             </div>
-          </motion.div>
+          </div>
+        </div>
+
+        {/* Stats Row */}
+        <div className="mt-16 grid grid-cols-2 md:grid-cols-4 gap-8 max-w-4xl mx-auto animate-fade-in-up stagger-6">
+          <div className="text-center">
+            <div className="text-3xl sm:text-4xl font-bold text-foreground">10K+</div>
+            <div className="text-sm text-muted-foreground mt-1">Active Users</div>
+          </div>
+          <div className="text-center">
+            <div className="text-3xl sm:text-4xl font-bold text-foreground">1M+</div>
+            <div className="text-sm text-muted-foreground mt-1">Videos Filtered</div>
+          </div>
+          <div className="text-center">
+            <div className="text-3xl sm:text-4xl font-bold text-foreground">99.5%</div>
+            <div className="text-sm text-muted-foreground mt-1">Accuracy Rate</div>
+          </div>
+          <div className="text-center">
+            <div className="text-3xl sm:text-4xl font-bold text-primary">Free</div>
+            <div className="text-sm text-muted-foreground mt-1">To Get Started</div>
+          </div>
         </div>
       </div>
-
-      {/* Background decorations */}
-      <div className="absolute top-1/2 left-0 -translate-y-1/2 w-72 h-72 bg-primary/10 rounded-full blur-3xl" />
-      <div className="absolute top-1/3 right-0 w-96 h-96 bg-secondary/10 rounded-full blur-3xl" />
     </section>
   );
 }

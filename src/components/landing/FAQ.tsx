@@ -1,9 +1,7 @@
 "use client";
 
-import { motion } from "framer-motion";
 import * as Accordion from "@radix-ui/react-accordion";
-import { ChevronDown } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { ChevronDown, HelpCircle } from "lucide-react";
 
 const faqs = [
   {
@@ -50,53 +48,58 @@ const faqs = [
 
 export function FAQ() {
   return (
-    <section id="faq" className="py-20 lg:py-32 bg-muted/30">
+    <section id="faq" className="section bg-background-secondary">
       <div className="mx-auto max-w-3xl px-4 sm:px-6 lg:px-8">
         {/* Section Header */}
         <div className="text-center">
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true }}
-            transition={{ duration: 0.5 }}
-          >
-            <h2 className="text-3xl sm:text-4xl lg:text-5xl font-bold text-foreground">
-              Frequently Asked <span className="gradient-text">Questions</span>
-            </h2>
-            <p className="mt-4 text-lg text-muted-foreground">
-              Everything you need to know about SafePlay.
-            </p>
-          </motion.div>
+          <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-primary/10 text-primary text-sm font-medium mb-4">
+            <HelpCircle className="w-4 h-4" />
+            Got Questions?
+          </div>
+          <h2 className="heading-1 text-foreground">
+            Frequently Asked <span className="gradient-text">Questions</span>
+          </h2>
+          <p className="mt-4 text-lg text-muted-foreground">
+            Everything you need to know about SafePlay.
+          </p>
         </div>
 
         {/* FAQ Accordion */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true }}
-          transition={{ duration: 0.5, delay: 0.1 }}
-          className="mt-12"
-        >
-          <Accordion.Root type="single" collapsible className="space-y-4">
+        <div className="mt-12">
+          <Accordion.Root type="single" collapsible className="space-y-3">
             {faqs.map((faq, index) => (
               <Accordion.Item
                 key={index}
                 value={`item-${index}`}
-                className="rounded-xl border bg-card overflow-hidden"
+                className="rounded-xl border border-border bg-card overflow-hidden transition-all duration-300 hover:border-primary/30 data-[state=open]:border-primary/50 data-[state=open]:shadow-lg"
               >
-                <Accordion.Trigger className="flex w-full items-center justify-between px-6 py-4 text-left font-medium text-foreground hover:bg-accent/50 transition-colors group">
-                  <span>{faq.question}</span>
-                  <ChevronDown className="h-5 w-5 text-muted-foreground transition-transform duration-200 group-data-[state=open]:rotate-180" />
+                <Accordion.Trigger className="flex w-full items-center justify-between px-6 py-4 text-left font-medium text-foreground hover:text-primary transition-colors group">
+                  <span className="pr-4">{faq.question}</span>
+                  <div className="w-8 h-8 rounded-full bg-muted flex items-center justify-center flex-shrink-0 group-hover:bg-primary/10 transition-colors">
+                    <ChevronDown className="h-4 w-4 text-muted-foreground group-hover:text-primary transition-all duration-200 group-data-[state=open]:rotate-180 group-data-[state=open]:text-primary" />
+                  </div>
                 </Accordion.Trigger>
                 <Accordion.Content className="overflow-hidden data-[state=closed]:animate-accordion-up data-[state=open]:animate-accordion-down">
-                  <div className="px-6 pb-4 text-muted-foreground">
+                  <div className="px-6 pb-4 text-muted-foreground leading-relaxed">
                     {faq.answer}
                   </div>
                 </Accordion.Content>
               </Accordion.Item>
             ))}
           </Accordion.Root>
-        </motion.div>
+        </div>
+
+        {/* Still have questions? */}
+        <div className="mt-12 text-center p-6 rounded-2xl bg-muted/50 border border-border">
+          <p className="text-foreground font-medium">Still have questions?</p>
+          <p className="mt-1 text-muted-foreground">
+            Can&apos;t find the answer you&apos;re looking for? Please{" "}
+            <a href="/contact" className="text-primary hover:underline font-medium">
+              contact our support team
+            </a>
+            .
+          </p>
+        </div>
       </div>
     </section>
   );
