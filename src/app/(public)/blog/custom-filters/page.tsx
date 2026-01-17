@@ -1,7 +1,7 @@
 import { Header } from "@/components/layout/Header";
 import { Footer } from "@/components/layout/Footer";
 import Link from "next/link";
-import { ArrowLeft, Calendar, Clock, User, Settings, Plus, Check } from "lucide-react";
+import { ArrowLeft, Calendar, Clock, User, Settings, ArrowRight, CheckCircle, Lightbulb } from "lucide-react";
 
 export const metadata = {
   title: "New Feature: Custom Word Filters - SafePlay Blog",
@@ -26,185 +26,204 @@ export default function BlogPost() {
 
             {/* Header */}
             <header className="mb-12">
-              <span className="text-primary font-medium">Product Updates</span>
+              <span className="inline-block px-3 py-1 rounded-full bg-primary/10 text-primary text-sm font-medium">
+                Product Updates
+              </span>
               <h1 className="mt-4 text-3xl lg:text-4xl font-bold text-foreground">
                 New Feature: Custom Word Filters
               </h1>
               <div className="mt-6 flex flex-wrap items-center gap-4 text-sm text-muted-foreground">
-                <span className="flex items-center gap-1">
+                <span className="flex items-center gap-1.5">
                   <User className="w-4 h-4" />
                   SafePlay Team
                 </span>
-                <span className="flex items-center gap-1">
+                <span className="flex items-center gap-1.5">
                   <Calendar className="w-4 h-4" />
                   January 5, 2026
                 </span>
-                <span className="flex items-center gap-1">
+                <span className="flex items-center gap-1.5">
                   <Clock className="w-4 h-4" />
                   3 min read
                 </span>
               </div>
             </header>
 
-            {/* Featured Image Placeholder */}
+            {/* Featured Image */}
             <div className="aspect-video rounded-2xl bg-gradient-to-br from-purple-100 to-pink-100 dark:from-purple-900/30 dark:to-pink-900/30 mb-12 flex items-center justify-center">
               <Settings className="w-24 h-24 text-primary/30" />
             </div>
 
-            {/* Content */}
-            <div className="prose prose-slate dark:prose-invert max-w-none">
-              <p className="lead text-xl text-muted-foreground">
+            {/* Article Content */}
+            <div className="space-y-8">
+              {/* Intro */}
+              <p className="text-xl text-muted-foreground leading-relaxed">
                 We&apos;re excited to announce custom word filters — a highly requested feature that
                 gives you complete control over what gets filtered in your videos. Available now
                 for all paid plans.
               </p>
 
-              <h2>What Are Custom Filters?</h2>
-              <p>
-                SafePlay has always filtered standard profanity automatically. But every family
-                and organization has different standards. Maybe you want to filter crude words
-                that aren&apos;t technically profanity. Maybe there are specific terms you&apos;d
-                rather your children not hear. Maybe you&apos;re running a faith-based organization
-                with specific guidelines.
-              </p>
-              <p>
-                Custom word filters let you add any words or phrases to your personal filter list.
-                When you filter a video, SafePlay will catch both the standard profanity and your
-                custom additions.
-              </p>
+              {/* Section 1 */}
+              <section className="space-y-4">
+                <h2 className="text-2xl font-bold text-foreground pt-4 border-t border-border">
+                  What Are Custom Filters?
+                </h2>
+                <p className="text-muted-foreground leading-relaxed">
+                  SafePlay has always filtered standard profanity automatically. But every family
+                  and organization has different standards. Maybe you want to filter crude words
+                  that aren&apos;t technically profanity. Maybe there are specific terms you&apos;d
+                  rather your children not hear. Maybe you&apos;re running a faith-based organization
+                  with specific guidelines.
+                </p>
+                <div className="p-4 rounded-xl bg-primary/5 border border-primary/20">
+                  <p className="text-foreground">
+                    <strong>Custom word filters</strong> let you add any words or phrases to your personal filter list.
+                    When you filter a video, SafePlay will catch both the standard profanity and your
+                    custom additions.
+                  </p>
+                </div>
+              </section>
 
-              <h2>How to Set Up Custom Filters</h2>
-              <p>
-                Setting up your custom filter list takes just a few steps:
-              </p>
-              <ol>
-                <li>Go to <strong>Settings</strong> in your SafePlay dashboard</li>
-                <li>Click on <strong>Filter Preferences</strong></li>
-                <li>Scroll to the <strong>Custom Words</strong> section</li>
-                <li>Add words or phrases, one per line</li>
-                <li>Click <strong>Save Changes</strong></li>
-              </ol>
-              <p>
-                That&apos;s it! Your custom words will now be filtered in all future videos you process.
-              </p>
+              {/* Section 2 - Setup Guide */}
+              <section className="space-y-6">
+                <h2 className="text-2xl font-bold text-foreground pt-4 border-t border-border">
+                  How to Set Up Custom Filters
+                </h2>
+                <p className="text-muted-foreground leading-relaxed">
+                  Setting up your custom filter list takes just a few steps:
+                </p>
 
-              {/* Visual Guide */}
-              <div className="not-prose my-8 p-6 rounded-2xl bg-muted/50 border border-border">
-                <h3 className="text-lg font-semibold text-foreground mb-4">Quick Setup Guide</h3>
-                <div className="space-y-4">
-                  <div className="flex items-start gap-4">
-                    <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
-                      <span className="text-primary font-semibold">1</span>
-                    </div>
-                    <div>
-                      <p className="font-medium text-foreground">Open Settings → Filter Preferences</p>
-                      <p className="text-sm text-muted-foreground">Find it in your dashboard sidebar</p>
-                    </div>
-                  </div>
-                  <div className="flex items-start gap-4">
-                    <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
-                      <span className="text-primary font-semibold">2</span>
-                    </div>
-                    <div>
-                      <p className="font-medium text-foreground">Add your custom words</p>
-                      <p className="text-sm text-muted-foreground">Enter one word or phrase per line</p>
-                    </div>
-                  </div>
-                  <div className="flex items-start gap-4">
-                    <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
-                      <span className="text-primary font-semibold">3</span>
-                    </div>
-                    <div>
-                      <p className="font-medium text-foreground">Save and you&apos;re done!</p>
-                      <p className="text-sm text-muted-foreground">Future videos will filter your custom words</p>
-                    </div>
+                <div className="p-6 rounded-xl bg-[#0F0F0F] text-white">
+                  <h3 className="text-lg font-semibold mb-6">Quick Setup Guide</h3>
+                  <div className="space-y-4">
+                    {[
+                      { step: "1", title: "Open Settings → Filter Preferences", desc: "Find it in your dashboard sidebar" },
+                      { step: "2", title: "Add your custom words", desc: "Enter one word or phrase per line" },
+                      { step: "3", title: "Save and you're done!", desc: "Future videos will filter your custom words" }
+                    ].map((item) => (
+                      <div key={item.step} className="flex items-start gap-4">
+                        <span className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center font-bold flex-shrink-0">
+                          {item.step}
+                        </span>
+                        <div>
+                          <p className="font-medium">{item.title}</p>
+                          <p className="text-sm text-white/60">{item.desc}</p>
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 </div>
+              </section>
+
+              {/* Section 3 - Best Practices */}
+              <section className="space-y-4">
+                <h2 className="text-2xl font-bold text-foreground pt-4 border-t border-border">
+                  Best Practices
+                </h2>
+                <p className="text-muted-foreground leading-relaxed">
+                  Here are some tips to get the most out of custom filters:
+                </p>
+                <div className="grid gap-3">
+                  {[
+                    { icon: "🎯", title: "Be specific", desc: "Add the exact word or phrase you want filtered. \"dang\" won't filter \"danger\"." },
+                    { icon: "🔄", title: "Include variations", desc: "If you want to filter a word, consider adding common misspellings or variations." },
+                    { icon: "🧪", title: "Test it out", desc: "After adding custom words, try filtering a video you know contains them." },
+                    { icon: "📋", title: "Review periodically", desc: "As your needs change, revisit your custom list to add or remove words." }
+                  ].map((item) => (
+                    <div key={item.title} className="flex items-start gap-4 p-4 rounded-xl bg-card border border-border">
+                      <span className="text-2xl">{item.icon}</span>
+                      <div>
+                        <p className="font-semibold text-foreground">{item.title}</p>
+                        <p className="text-sm text-muted-foreground">{item.desc}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </section>
+
+              {/* Section 4 */}
+              <section className="space-y-4">
+                <h2 className="text-2xl font-bold text-foreground pt-4 border-t border-border">
+                  Family Profiles & Custom Filters
+                </h2>
+                <p className="text-muted-foreground leading-relaxed">
+                  If you&apos;re on the Family or Organization plan, each profile can have its own
+                  custom filter list. This means:
+                </p>
+                <ul className="space-y-2">
+                  {[
+                    "Younger children can have stricter filtering than teenagers",
+                    "Different family members can customize based on their preferences",
+                    "Parents maintain control over what each profile filters"
+                  ].map((item, i) => (
+                    <li key={i} className="flex items-center gap-3 text-muted-foreground">
+                      <CheckCircle className="w-5 h-5 text-success flex-shrink-0" />
+                      {item}
+                    </li>
+                  ))}
+                </ul>
+                <p className="text-muted-foreground leading-relaxed">
+                  To set profile-specific filters, go to Family Settings, select a profile, and
+                  configure their Filter Preferences individually.
+                </p>
+              </section>
+
+              {/* Section 5 */}
+              <section className="space-y-4">
+                <h2 className="text-2xl font-bold text-foreground pt-4 border-t border-border">
+                  What About Videos I&apos;ve Already Filtered?
+                </h2>
+                <div className="p-4 rounded-xl bg-muted/50 border border-border flex items-start gap-4">
+                  <Lightbulb className="w-6 h-6 text-warning flex-shrink-0 mt-0.5" />
+                  <div>
+                    <p className="text-foreground font-medium">Good to know</p>
+                    <p className="text-sm text-muted-foreground">
+                      Custom filters apply to videos you filter <em>after</em> adding the words. If you&apos;ve
+                      already filtered a video and want it to include your new custom words, you&apos;ll need
+                      to re-filter it. Don&apos;t worry — you won&apos;t be charged twice for the same video.
+                    </p>
+                  </div>
+                </div>
+              </section>
+
+              {/* Section 6 - What's Next */}
+              <section className="space-y-4">
+                <h2 className="text-2xl font-bold text-foreground pt-4 border-t border-border">
+                  What&apos;s Next?
+                </h2>
+                <p className="text-muted-foreground leading-relaxed">
+                  We&apos;re already working on additional filtering customization options:
+                </p>
+                <div className="grid sm:grid-cols-3 gap-3">
+                  {[
+                    { title: "Sensitivity levels", desc: "Filter more or less aggressively" },
+                    { title: "Category filtering", desc: "Violence, crude humor, etc." },
+                    { title: "Shareable lists", desc: "For organizations" }
+                  ].map((item) => (
+                    <div key={item.title} className="p-4 rounded-xl bg-card border border-border text-center">
+                      <p className="font-semibold text-foreground text-sm">{item.title}</p>
+                      <p className="text-xs text-muted-foreground mt-1">{item.desc}</p>
+                    </div>
+                  ))}
+                </div>
+                <p className="text-muted-foreground leading-relaxed">
+                  Stay tuned for more updates, and as always, we love hearing your feedback!
+                </p>
+              </section>
+
+              {/* CTA Box */}
+              <div className="p-6 rounded-xl bg-primary/10 border border-primary/20">
+                <h3 className="text-lg font-semibold text-foreground mb-2">Ready to try custom filters?</h3>
+                <p className="text-muted-foreground mb-4">
+                  Log in to your dashboard and set up your custom word list today.
+                </p>
+                <Link
+                  href="/settings"
+                  className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-white font-medium hover:bg-primary-hover transition-colors"
+                >
+                  Go to Settings
+                  <ArrowRight className="w-4 h-4" />
+                </Link>
               </div>
-
-              <h2>Best Practices</h2>
-              <p>
-                Here are some tips to get the most out of custom filters:
-              </p>
-              <ul>
-                <li>
-                  <strong>Be specific:</strong> Add the exact word or phrase you want filtered.
-                  &quot;dang&quot; won&apos;t filter &quot;danger&quot;.
-                </li>
-                <li>
-                  <strong>Include variations:</strong> If you want to filter a word, consider adding
-                  common misspellings or variations.
-                </li>
-                <li>
-                  <strong>Test it out:</strong> After adding custom words, try filtering a video
-                  you know contains them to make sure it&apos;s working as expected.
-                </li>
-                <li>
-                  <strong>Review periodically:</strong> As your needs change, revisit your custom
-                  list to add or remove words.
-                </li>
-              </ul>
-
-              <h2>Family Profiles & Custom Filters</h2>
-              <p>
-                If you&apos;re on the Family or Organization plan, each profile can have its own
-                custom filter list. This means:
-              </p>
-              <ul>
-                <li>Younger children can have stricter filtering than teenagers</li>
-                <li>Different family members can customize based on their preferences</li>
-                <li>Parents maintain control over what each profile filters</li>
-              </ul>
-              <p>
-                To set profile-specific filters, go to Family Settings, select a profile, and
-                configure their Filter Preferences individually.
-              </p>
-
-              <h2>What About Videos I&apos;ve Already Filtered?</h2>
-              <p>
-                Custom filters apply to videos you filter <em>after</em> adding the words. If you&apos;ve
-                already filtered a video and want it to include your new custom words, you&apos;ll need
-                to re-filter it. Don&apos;t worry — you won&apos;t be charged twice for the same video.
-              </p>
-
-              <h2>Available on All Paid Plans</h2>
-              <p>
-                Custom word filters are available to all Individual, Family, and Organization
-                subscribers. Free plan users can upgrade to access this feature.
-              </p>
-              <p>
-                We&apos;re committed to giving you the tools to create exactly the viewing experience
-                you want. Custom filters are just one part of that commitment.
-              </p>
-
-              <h2>What&apos;s Next?</h2>
-              <p>
-                We&apos;re already working on additional filtering customization options, including:
-              </p>
-              <ul>
-                <li>Sensitivity levels (filter more or less aggressively)</li>
-                <li>Category-based filtering (violence, crude humor, etc.)</li>
-                <li>Shareable filter lists for organizations</li>
-              </ul>
-              <p>
-                Stay tuned for more updates, and as always, we love hearing your feedback.
-                Let us know what features would be most valuable to you!
-              </p>
-            </div>
-
-            {/* CTA Box */}
-            <div className="mt-12 p-6 rounded-2xl bg-primary/10 border border-primary/20">
-              <h3 className="text-lg font-semibold text-foreground mb-2">Ready to try custom filters?</h3>
-              <p className="text-muted-foreground mb-4">
-                Log in to your dashboard and set up your custom word list today.
-              </p>
-              <Link
-                href="/settings"
-                className="inline-flex items-center gap-2 text-primary font-medium hover:underline"
-              >
-                Go to Settings
-                <Plus className="w-4 h-4" />
-              </Link>
             </div>
 
             {/* Author Box */}

@@ -1,171 +1,12 @@
 import { Header } from "@/components/layout/Header";
 import { Footer } from "@/components/layout/Footer";
 import Link from "next/link";
-import { ArrowLeft, Shield, Sliders, Volume2, VolumeX } from "lucide-react";
+import { ArrowLeft, Shield, Sliders, Volume2, VolumeX, Target, CheckCircle, XCircle, Lightbulb, RefreshCw, Play } from "lucide-react";
 
 export const metadata = {
   title: "Filtering & Detection - SafePlay Help Center",
   description: "Learn how SafePlay's filtering works, its accuracy, and customization options.",
 };
-
-const articles = [
-  {
-    id: "how-filtering-works",
-    title: "How Filtering Works",
-    content: `SafePlay uses advanced technology to identify and filter profanity in YouTube videos.
-
-**The Process**
-1. When you request to filter a video, we analyze the audio track
-2. Our system identifies spoken words with precise timing
-3. Profanity is detected based on our comprehensive word list plus any custom words you've added
-4. The video is prepared with those moments silenced (mute) or replaced with a bleep sound
-
-**What Gets Filtered**
-- Standard profanity and vulgar language
-- Crude/offensive terms
-- Your custom word list (paid plans)
-
-**What Doesn't Get Filtered**
-- Visual content (we filter audio only)
-- Implied or bleeped profanity in the original video
-- Words that sound similar but aren't profanity
-- Foreign language profanity (English only currently)
-
-**Processing Time**
-Most videos are processed in 1-3 minutes. Longer videos (like movies) may take up to 5-10 minutes.`,
-  },
-  {
-    id: "accuracy",
-    title: "Detection Accuracy",
-    content: `SafePlay achieves 99.5% accuracy in detecting profanity. Here's what that means:
-
-**What 99.5% Accuracy Means**
-In a video with 100 instances of profanity, we typically catch 99-100 of them. The occasional miss usually happens with:
-- Heavily accented speech
-- Very fast speech
-- Background noise interference
-- Mumbled or unclear words
-
-**False Positives**
-Sometimes we might filter a word that sounds like profanity but isn't. This is rare, and we continuously improve our system to minimize these cases.
-
-**Reporting Issues**
-If you notice we missed something or incorrectly filtered a word:
-1. Go to your filtered video in History
-2. Click "Report Issue"
-3. Note the approximate timestamp
-4. We'll use this feedback to improve
-
-**Continuous Improvement**
-Our detection system learns and improves over time based on user feedback and new training data. We regularly release updates to improve accuracy.`,
-  },
-  {
-    id: "custom-filters",
-    title: "Setting Up Custom Word Filters",
-    content: `Paid plans can add custom words to filter beyond the standard profanity list.
-
-**Adding Custom Words**
-1. Go to Settings → Filter Preferences
-2. Scroll to "Custom Words"
-3. Add words or phrases, one per line
-4. Click "Save Changes"
-
-**Best Practices**
-- Be specific (adding "dang" won't filter "danger")
-- Include common misspellings if needed
-- Add phrases exactly as spoken (e.g., "oh my god")
-- Test with a known video after adding
-
-**Per-Profile Custom Words (Family Plans)**
-Each family profile can have its own custom word list:
-1. Go to Family → Select a profile
-2. Edit their Filter Preferences
-3. Add profile-specific custom words
-
-This lets you filter more strictly for younger children while being more relaxed for teens.
-
-**Removing Custom Words**
-Simply delete the word from your list and save. Note: Previously filtered videos keep their original filtering. Re-filter the video if you want the change to apply.`,
-  },
-  {
-    id: "mute-vs-bleep",
-    title: "Mute vs. Bleep: Which to Choose",
-    content: `SafePlay offers two filtering modes. Choose based on your preference:
-
-**Mute Mode**
-- Filtered words are completely silenced
-- The video continues with a brief moment of no audio
-- More subtle and natural-feeling
-- Best for: Adults who want minimal disruption, or when you don't want to draw attention to filtered content
-
-**Bleep Mode**
-- Filtered words are replaced with a "bleep" sound
-- Classic TV-style censoring
-- Clear indication that something was filtered
-- Best for: Families who want to know when filtering occurs, educational settings, traditional preference
-
-**Changing Your Preference**
-1. Go to Settings → Filter Preferences
-2. Under "Filter Type," select Mute or Bleep
-3. Save changes
-
-**Note:** Your choice applies to future videos. Previously filtered videos keep their original mode. To change a video's mode, you'll need to re-filter it (this doesn't use additional credits for the same video).`,
-  },
-  {
-    id: "video-compatibility",
-    title: "What Videos Work with SafePlay",
-    content: `SafePlay works with most YouTube videos, but there are some limitations.
-
-**Works Great**
-- Public YouTube videos
-- Unlisted videos (if you have the link)
-- Most educational content
-- Movies and shows on YouTube
-- Music videos
-- Documentaries
-
-**Limited or No Support**
-- **Private videos** — We can't access these
-- **Age-restricted content** — May not be accessible depending on restrictions
-- **Live streams** — Not supported (we need the complete video)
-- **YouTube Shorts** — Currently not supported
-- **Premium-only content** — Depends on access restrictions
-
-**Regional Restrictions**
-Some videos are only available in certain countries. If a video isn't available in our processing region, we may not be able to filter it.
-
-**Copyright-Protected Content**
-Most copyright-protected videos work fine. However, some videos with aggressive DRM may not be filterable.
-
-**Checking Compatibility**
-The easiest way to check is to try filtering the video. If there's an issue, we'll let you know before any credits are used.`,
-  },
-  {
-    id: "refiltering",
-    title: "Re-filtering Videos",
-    content: `Sometimes you might want to re-filter a video you've already processed.
-
-**Reasons to Re-filter**
-- You've added new custom words and want them applied
-- You want to switch between mute and bleep mode
-- Our system has been updated with improved detection
-
-**How to Re-filter**
-1. Go to History
-2. Find the video you want to re-filter
-3. Click the menu (three dots)
-4. Select "Re-filter Video"
-5. Confirm
-
-**Credit Usage**
-Re-filtering the same video does NOT use additional credits. Your original filtering "paid for" that video, and re-filtering is free.
-
-**When Re-filtering Isn't Needed**
-- Watching a filtered video again (always free)
-- Minor setting changes that don't affect filtering
-- Viewing on a different device (your filtered videos sync)`,
-  },
-];
 
 export default function HelpCategoryPage() {
   return (
@@ -198,7 +39,14 @@ export default function HelpCategoryPage() {
             <div className="mb-12 p-4 rounded-xl bg-muted/50 border border-border">
               <p className="text-sm font-medium text-foreground mb-3">Quick Links</p>
               <div className="flex flex-wrap gap-2">
-                {articles.map((article) => (
+                {[
+                  { id: "how-filtering-works", title: "How It Works" },
+                  { id: "accuracy", title: "Accuracy" },
+                  { id: "custom-filters", title: "Custom Filters" },
+                  { id: "mute-vs-bleep", title: "Mute vs Bleep" },
+                  { id: "video-compatibility", title: "Compatibility" },
+                  { id: "refiltering", title: "Re-filtering" },
+                ].map((article) => (
                   <a
                     key={article.id}
                     href={`#${article.id}`}
@@ -212,53 +60,374 @@ export default function HelpCategoryPage() {
 
             {/* Articles */}
             <div className="space-y-12">
-              {articles.map((article) => (
-                <article
-                  key={article.id}
-                  id={article.id}
-                  className="scroll-mt-24"
-                >
-                  <div className="p-8 rounded-2xl bg-card border border-border">
-                    <h2 className="text-xl font-semibold text-foreground mb-4">
-                      {article.title}
-                    </h2>
-                    <div className="prose prose-slate dark:prose-invert max-w-none text-muted-foreground">
-                      {article.content.split('\n\n').map((paragraph, i) => {
-                        if (paragraph.startsWith('**') && paragraph.endsWith('**')) {
-                          return (
-                            <h3 key={i} className="text-lg font-semibold text-foreground mt-6 mb-2 first:mt-0">
-                              {paragraph.replace(/\*\*/g, '')}
-                            </h3>
-                          );
-                        }
-                        if (paragraph.startsWith('1.') || paragraph.startsWith('-')) {
-                          const items = paragraph.split('\n').filter(Boolean);
-                          const isNumbered = paragraph.startsWith('1.');
-                          const ListTag = isNumbered ? 'ol' : 'ul';
-                          return (
-                            <ListTag key={i} className={`space-y-2 my-4 ${isNumbered ? 'list-decimal' : 'list-disc'} ml-5`}>
-                              {items.map((item, j) => (
-                                <li key={j}>
-                                  {item.replace(/^\d+\.\s*/, '').replace(/^-\s*/, '').split('**').map((part, k) =>
-                                    k % 2 === 1 ? <strong key={k} className="text-foreground">{part}</strong> : part
-                                  )}
-                                </li>
-                              ))}
-                            </ListTag>
-                          );
-                        }
-                        return (
-                          <p key={i} className="my-4">
-                            {paragraph.split('**').map((part, k) =>
-                              k % 2 === 1 ? <strong key={k} className="text-foreground">{part}</strong> : part
-                            )}
-                          </p>
-                        );
-                      })}
+              {/* Article 1 - How Filtering Works */}
+              <article id="how-filtering-works" className="scroll-mt-24">
+                <div className="p-8 rounded-2xl bg-card border border-border">
+                  <div className="flex items-center gap-3 mb-6">
+                    <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
+                      <Shield className="w-5 h-5 text-primary" />
+                    </div>
+                    <h2 className="text-xl font-semibold text-foreground">How Filtering Works</h2>
+                  </div>
+
+                  <p className="text-muted-foreground mb-6">
+                    SafePlay uses advanced technology to identify and filter profanity in YouTube videos.
+                  </p>
+
+                  <div className="p-5 rounded-xl bg-[#0F0F0F] text-white mb-6">
+                    <h3 className="font-semibold mb-4">The Process</h3>
+                    <div className="space-y-3">
+                      {[
+                        "When you request to filter a video, we analyze the audio track",
+                        "Our system identifies spoken words with precise timing",
+                        "Profanity is detected based on our comprehensive word list plus your custom words",
+                        "The video is prepared with those moments silenced (mute) or replaced with a bleep",
+                      ].map((step, i) => (
+                        <div key={i} className="flex items-start gap-3">
+                          <span className="w-6 h-6 rounded bg-primary flex items-center justify-center text-sm font-bold flex-shrink-0">
+                            {i + 1}
+                          </span>
+                          <span className="text-white/90">{step}</span>
+                        </div>
+                      ))}
                     </div>
                   </div>
-                </article>
-              ))}
+
+                  <div className="grid sm:grid-cols-2 gap-4 mb-6">
+                    <div className="p-4 rounded-xl bg-muted/50 border border-border">
+                      <p className="font-semibold text-foreground flex items-center gap-2 mb-2">
+                        <CheckCircle className="w-4 h-4 text-success" />
+                        What Gets Filtered
+                      </p>
+                      <ul className="text-sm text-muted-foreground space-y-1">
+                        <li>• Standard profanity and vulgar language</li>
+                        <li>• Crude/offensive terms</li>
+                        <li>• Your custom word list (paid plans)</li>
+                      </ul>
+                    </div>
+
+                    <div className="p-4 rounded-xl bg-muted/50 border border-border">
+                      <p className="font-semibold text-foreground flex items-center gap-2 mb-2">
+                        <XCircle className="w-4 h-4 text-destructive" />
+                        What Doesn&apos;t Get Filtered
+                      </p>
+                      <ul className="text-sm text-muted-foreground space-y-1">
+                        <li>• Visual content (audio only)</li>
+                        <li>• Already bleeped content in original</li>
+                        <li>• Similar-sounding non-profanity</li>
+                        <li>• Foreign language (English only)</li>
+                      </ul>
+                    </div>
+                  </div>
+
+                  <div className="p-4 rounded-xl bg-muted/50 border border-border">
+                    <p className="font-semibold text-foreground">Processing Time</p>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      Most videos are processed in 1-3 minutes. Longer videos (like movies) may take up to 5-10 minutes.
+                    </p>
+                  </div>
+                </div>
+              </article>
+
+              {/* Article 2 - Accuracy */}
+              <article id="accuracy" className="scroll-mt-24">
+                <div className="p-8 rounded-2xl bg-card border border-border">
+                  <div className="flex items-center gap-3 mb-6">
+                    <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
+                      <Target className="w-5 h-5 text-primary" />
+                    </div>
+                    <h2 className="text-xl font-semibold text-foreground">Detection Accuracy</h2>
+                  </div>
+
+                  <div className="p-4 rounded-xl bg-primary/10 border border-primary/20 mb-6">
+                    <p className="text-2xl font-bold text-foreground">99.5%</p>
+                    <p className="text-sm text-muted-foreground">Detection accuracy rate</p>
+                  </div>
+
+                  <div className="space-y-4 mb-6">
+                    <div className="p-4 rounded-xl bg-muted/50 border border-border">
+                      <p className="font-semibold text-foreground">What This Means</p>
+                      <p className="text-sm text-muted-foreground mt-1">
+                        In a video with 100 instances of profanity, we typically catch 99-100 of them.
+                        The occasional miss usually happens with:
+                      </p>
+                      <ul className="mt-2 text-sm text-muted-foreground space-y-1">
+                        <li>• Heavily accented speech</li>
+                        <li>• Very fast speech</li>
+                        <li>• Background noise interference</li>
+                        <li>• Mumbled or unclear words</li>
+                      </ul>
+                    </div>
+
+                    <div className="p-4 rounded-xl bg-muted/50 border border-border">
+                      <p className="font-semibold text-foreground">False Positives</p>
+                      <p className="text-sm text-muted-foreground mt-1">
+                        Sometimes we might filter a word that sounds like profanity but isn&apos;t.
+                        This is rare, and we continuously improve our system to minimize these cases.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="p-4 rounded-xl bg-muted/50 border border-border">
+                    <p className="font-semibold text-foreground mb-2">Reporting Issues</p>
+                    <p className="text-sm text-muted-foreground mb-3">
+                      If you notice we missed something or incorrectly filtered a word:
+                    </p>
+                    <ol className="space-y-2">
+                      {[
+                        "Go to your filtered video in History",
+                        "Click \"Report Issue\"",
+                        "Note the approximate timestamp",
+                        "We'll use this feedback to improve",
+                      ].map((step, i) => (
+                        <li key={i} className="flex items-center gap-3 text-sm text-muted-foreground">
+                          <span className="w-6 h-6 rounded bg-primary/10 text-primary text-xs flex items-center justify-center flex-shrink-0">
+                            {i + 1}
+                          </span>
+                          {step}
+                        </li>
+                      ))}
+                    </ol>
+                  </div>
+                </div>
+              </article>
+
+              {/* Article 3 - Custom Filters */}
+              <article id="custom-filters" className="scroll-mt-24">
+                <div className="p-8 rounded-2xl bg-card border border-border">
+                  <div className="flex items-center gap-3 mb-6">
+                    <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
+                      <Sliders className="w-5 h-5 text-primary" />
+                    </div>
+                    <h2 className="text-xl font-semibold text-foreground">Setting Up Custom Word Filters</h2>
+                  </div>
+
+                  <p className="text-muted-foreground mb-6">
+                    Paid plans can add custom words to filter beyond the standard profanity list.
+                  </p>
+
+                  <div className="p-4 rounded-xl bg-muted/50 border border-border mb-4">
+                    <p className="font-semibold text-foreground mb-3">Adding Custom Words</p>
+                    <ol className="space-y-2">
+                      {[
+                        "Go to Settings → Filter Preferences",
+                        "Scroll to \"Custom Words\"",
+                        "Add words or phrases, one per line",
+                        "Click \"Save Changes\"",
+                      ].map((step, i) => (
+                        <li key={i} className="flex items-center gap-3 text-sm text-muted-foreground">
+                          <span className="w-6 h-6 rounded bg-primary/10 text-primary text-xs flex items-center justify-center flex-shrink-0">
+                            {i + 1}
+                          </span>
+                          {step}
+                        </li>
+                      ))}
+                    </ol>
+                  </div>
+
+                  <div className="p-5 rounded-xl bg-[#0F0F0F] text-white mb-4">
+                    <h3 className="font-semibold mb-3">Best Practices</h3>
+                    <ul className="space-y-2 text-sm text-white/80">
+                      <li className="flex items-start gap-2">
+                        <span className="text-primary mt-0.5">•</span>
+                        <span><strong>Be specific</strong> — adding &quot;dang&quot; won&apos;t filter &quot;danger&quot;</span>
+                      </li>
+                      <li className="flex items-start gap-2">
+                        <span className="text-primary mt-0.5">•</span>
+                        <span>Include common misspellings if needed</span>
+                      </li>
+                      <li className="flex items-start gap-2">
+                        <span className="text-primary mt-0.5">•</span>
+                        <span>Add phrases exactly as spoken (e.g., &quot;oh my god&quot;)</span>
+                      </li>
+                      <li className="flex items-start gap-2">
+                        <span className="text-primary mt-0.5">•</span>
+                        <span>Test with a known video after adding</span>
+                      </li>
+                    </ul>
+                  </div>
+
+                  <div className="p-4 rounded-xl bg-primary/10 border border-primary/20">
+                    <p className="font-semibold text-foreground">Per-Profile Custom Words (Family Plans)</p>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      Each family profile can have its own custom word list. Go to Family → Select a profile →
+                      Edit Filter Preferences. This lets you filter more strictly for younger children while
+                      being more relaxed for teens.
+                    </p>
+                  </div>
+                </div>
+              </article>
+
+              {/* Article 4 - Mute vs Bleep */}
+              <article id="mute-vs-bleep" className="scroll-mt-24">
+                <div className="p-8 rounded-2xl bg-card border border-border">
+                  <div className="flex items-center gap-3 mb-6">
+                    <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
+                      <Volume2 className="w-5 h-5 text-primary" />
+                    </div>
+                    <h2 className="text-xl font-semibold text-foreground">Mute vs. Bleep: Which to Choose</h2>
+                  </div>
+
+                  <p className="text-muted-foreground mb-6">
+                    SafePlay offers two filtering modes. Choose based on your preference:
+                  </p>
+
+                  <div className="grid sm:grid-cols-2 gap-4 mb-6">
+                    <div className="p-5 rounded-xl bg-card border-2 border-blue-500/30">
+                      <div className="flex items-center gap-3 mb-3">
+                        <VolumeX className="w-6 h-6 text-blue-500" />
+                        <h3 className="font-semibold text-foreground">Mute Mode</h3>
+                      </div>
+                      <ul className="space-y-2 text-sm text-muted-foreground mb-3">
+                        <li>• Filtered words completely silenced</li>
+                        <li>• Brief moment of no audio</li>
+                        <li>• More subtle and natural-feeling</li>
+                      </ul>
+                      <p className="text-sm">
+                        <span className="font-medium text-foreground">Best for:</span>{" "}
+                        <span className="text-muted-foreground">Adults who want minimal disruption</span>
+                      </p>
+                    </div>
+
+                    <div className="p-5 rounded-xl bg-card border-2 border-orange-500/30">
+                      <div className="flex items-center gap-3 mb-3">
+                        <Volume2 className="w-6 h-6 text-orange-500" />
+                        <h3 className="font-semibold text-foreground">Bleep Mode</h3>
+                      </div>
+                      <ul className="space-y-2 text-sm text-muted-foreground mb-3">
+                        <li>• Classic &quot;bleep&quot; sound replacement</li>
+                        <li>• TV-style censoring</li>
+                        <li>• Clear indication of filtering</li>
+                      </ul>
+                      <p className="text-sm">
+                        <span className="font-medium text-foreground">Best for:</span>{" "}
+                        <span className="text-muted-foreground">Families who want to know when content is filtered</span>
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="p-4 rounded-xl bg-muted/50 border border-border flex items-start gap-4">
+                    <Lightbulb className="w-6 h-6 text-warning flex-shrink-0 mt-0.5" />
+                    <div>
+                      <p className="font-medium text-foreground">Note</p>
+                      <p className="text-sm text-muted-foreground">
+                        Your choice applies to future videos. Previously filtered videos keep their original mode.
+                        To change a video&apos;s mode, you&apos;ll need to re-filter it (no additional credits).
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </article>
+
+              {/* Article 5 - Video Compatibility */}
+              <article id="video-compatibility" className="scroll-mt-24">
+                <div className="p-8 rounded-2xl bg-card border border-border">
+                  <div className="flex items-center gap-3 mb-6">
+                    <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
+                      <Play className="w-5 h-5 text-primary" />
+                    </div>
+                    <h2 className="text-xl font-semibold text-foreground">What Videos Work with SafePlay</h2>
+                  </div>
+
+                  <p className="text-muted-foreground mb-6">
+                    SafePlay works with most YouTube videos, but there are some limitations.
+                  </p>
+
+                  <div className="grid sm:grid-cols-2 gap-4 mb-6">
+                    <div className="p-4 rounded-xl bg-muted/50 border border-border">
+                      <p className="font-semibold text-foreground flex items-center gap-2 mb-3">
+                        <CheckCircle className="w-4 h-4 text-success" />
+                        Works Great
+                      </p>
+                      <ul className="text-sm text-muted-foreground space-y-1">
+                        <li>• Public YouTube videos</li>
+                        <li>• Unlisted videos (with link)</li>
+                        <li>• Educational content</li>
+                        <li>• Movies and shows on YouTube</li>
+                        <li>• Music videos</li>
+                        <li>• Documentaries</li>
+                      </ul>
+                    </div>
+
+                    <div className="p-4 rounded-xl bg-muted/50 border border-border">
+                      <p className="font-semibold text-foreground flex items-center gap-2 mb-3">
+                        <XCircle className="w-4 h-4 text-destructive" />
+                        Limited or No Support
+                      </p>
+                      <ul className="text-sm text-muted-foreground space-y-1">
+                        <li>• <strong>Private videos</strong> — can&apos;t access</li>
+                        <li>• <strong>Age-restricted</strong> — may not work</li>
+                        <li>• <strong>Live streams</strong> — not supported</li>
+                        <li>• <strong>YouTube Shorts</strong> — not supported</li>
+                        <li>• <strong>Premium-only</strong> — depends on access</li>
+                      </ul>
+                    </div>
+                  </div>
+
+                  <div className="p-4 rounded-xl bg-primary/10 border border-primary/20">
+                    <p className="font-semibold text-foreground">Checking Compatibility</p>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      The easiest way to check is to try filtering the video. If there&apos;s an issue,
+                      we&apos;ll let you know before any credits are used.
+                    </p>
+                  </div>
+                </div>
+              </article>
+
+              {/* Article 6 - Re-filtering */}
+              <article id="refiltering" className="scroll-mt-24">
+                <div className="p-8 rounded-2xl bg-card border border-border">
+                  <div className="flex items-center gap-3 mb-6">
+                    <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
+                      <RefreshCw className="w-5 h-5 text-primary" />
+                    </div>
+                    <h2 className="text-xl font-semibold text-foreground">Re-filtering Videos</h2>
+                  </div>
+
+                  <p className="text-muted-foreground mb-6">
+                    Sometimes you might want to re-filter a video you&apos;ve already processed.
+                  </p>
+
+                  <div className="space-y-4 mb-6">
+                    <div className="p-4 rounded-xl bg-muted/50 border border-border">
+                      <p className="font-semibold text-foreground mb-2">Reasons to Re-filter</p>
+                      <ul className="text-sm text-muted-foreground space-y-1">
+                        <li>• You&apos;ve added new custom words and want them applied</li>
+                        <li>• You want to switch between mute and bleep mode</li>
+                        <li>• Our system has been updated with improved detection</li>
+                      </ul>
+                    </div>
+
+                    <div className="p-4 rounded-xl bg-muted/50 border border-border">
+                      <p className="font-semibold text-foreground mb-3">How to Re-filter</p>
+                      <ol className="space-y-2">
+                        {[
+                          "Go to History",
+                          "Find the video you want to re-filter",
+                          "Click the menu (three dots)",
+                          "Select \"Re-filter Video\"",
+                          "Confirm",
+                        ].map((step, i) => (
+                          <li key={i} className="flex items-center gap-3 text-sm text-muted-foreground">
+                            <span className="w-6 h-6 rounded bg-primary/10 text-primary text-xs flex items-center justify-center flex-shrink-0">
+                              {i + 1}
+                            </span>
+                            {step}
+                          </li>
+                        ))}
+                      </ol>
+                    </div>
+                  </div>
+
+                  <div className="p-4 rounded-xl bg-primary/10 border border-primary/20">
+                    <p className="font-semibold text-foreground">Credit Usage</p>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      <strong>Re-filtering the same video does NOT use additional credits.</strong> Your original
+                      filtering &quot;paid for&quot; that video, and re-filtering is free.
+                    </p>
+                  </div>
+                </div>
+              </article>
             </div>
 
             {/* Help CTA */}
