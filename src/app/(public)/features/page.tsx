@@ -6,7 +6,7 @@ import { CTA } from "@/components/landing/CTA";
 
 export const metadata = {
   title: "Features - SafePlay",
-  description: "Discover all the features that make SafePlay the best YouTube profanity filter. AI-powered detection, custom filters, family profiles, and more.",
+  description: "Discover all the features that make SafePlay the best YouTube profanity filter. Precision detection, custom filters, family profiles, and more.",
 };
 
 export default function FeaturesPage() {

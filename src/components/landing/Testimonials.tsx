@@ -23,7 +23,7 @@ const testimonials = [
   },
   {
     content:
-      "I was skeptical at first, but the AI is remarkably precise. It catches profanity without disrupting the natural flow of the video. Worth every penny.",
+      "I was skeptical at first, but the detection is remarkably precise. It catches profanity without disrupting the natural flow of the video. Worth every penny.",
     author: "David K.",
     role: "Content Creator",
     rating: 5,

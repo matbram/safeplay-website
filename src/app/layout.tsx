@@ -4,7 +4,7 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: "SafePlay - Watch YouTube Without the Profanity",
   description:
-    "SafePlay automatically mutes or bleeps profanity in YouTube videos using AI-powered transcription. Perfect for families, educators, and workplaces.",
+    "SafePlay automatically mutes or bleeps profanity in YouTube videos with pinpoint precision. Perfect for families, educators, and workplaces.",
   keywords: [
     "YouTube filter",
     "profanity filter",
@@ -23,7 +23,7 @@ export const metadata: Metadata = {
     siteName: "SafePlay",
     title: "SafePlay - Watch YouTube Without the Profanity",
     description:
-      "AI-powered profanity filtering for YouTube. Mute or bleep inappropriate language automatically.",
+      "Intelligent profanity filtering for YouTube. Mute or bleep inappropriate language automatically.",
     images: [
       {
         url: "/og-image.png",
@@ -37,7 +37,7 @@ export const metadata: Metadata = {
     card: "summary_large_image",
     title: "SafePlay - Watch YouTube Without the Profanity",
     description:
-      "AI-powered profanity filtering for YouTube. Mute or bleep inappropriate language automatically.",
+      "Intelligent profanity filtering for YouTube. Mute or bleep inappropriate language automatically.",
     images: ["/og-image.png"],
     creator: "@safeplayapp",
   },

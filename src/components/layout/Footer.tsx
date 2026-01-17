@@ -41,7 +41,7 @@ export function Footer() {
               <span className="text-xl font-bold">SafePlay</span>
             </Link>
             <p className="mt-4 text-sm text-muted-foreground max-w-xs">
-              Clean YouTube viewing for the whole family. Filter profanity automatically with AI-powered precision.
+              Clean YouTube viewing for the whole family. Filter profanity automatically with pinpoint precision.
             </p>
           </div>
 

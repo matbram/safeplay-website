@@ -7,12 +7,12 @@ const faqs = [
   {
     question: "How does SafePlay filter profanity?",
     answer:
-      "SafePlay uses advanced AI-powered speech recognition to transcribe YouTube videos with character-level precision. Our system identifies profanity and automatically mutes or bleeps those specific moments while the video plays. The filtering happens in real-time with minimal latency.",
+      "SafePlay uses proprietary technology to analyze YouTube videos with character-level precision. Our system identifies profanity and automatically mutes or bleeps those specific moments while the video plays. The filtering happens in real-time with minimal latency.",
   },
   {
     question: "What counts as a 'credit'?",
     answer:
-      "One credit equals one minute of video filtering. For example, a 45-minute video costs 45 credits. If you've already filtered a video before, watching it again is free since we cache the transcript.",
+      "One credit equals one minute of video filtering. For example, a 45-minute video costs 45 credits. If you've already filtered a video before, watching it again is free since we remember your results.",
   },
   {
     question: "Does SafePlay work on all YouTube videos?",

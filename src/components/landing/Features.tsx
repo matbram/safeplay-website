@@ -16,9 +16,9 @@ import {
 const features = [
   {
     icon: Zap,
-    title: "AI-Powered Detection",
+    title: "Precision Detection",
     description:
-      "Advanced AI transcription with character-level precision identifies profanity in real-time with 99.5% accuracy.",
+      "Advanced speech analysis with character-level precision identifies profanity in real-time with 99.5% accuracy.",
     color: "bg-amber-500",
   },
   {
@@ -32,7 +32,7 @@ const features = [
     icon: Clock,
     title: "Instant Caching",
     description:
-      "Once a video is filtered, the transcript is cached. Subsequent views are instant with no processing wait.",
+      "Once a video is filtered, the results are cached. Subsequent views are instant with no processing wait.",
     color: "bg-emerald-500",
   },
   {
@@ -73,7 +73,7 @@ export function Features() {
             <span className="gradient-text">clean viewing</span>
           </h2>
           <p className="mt-4 text-lg text-muted-foreground">
-            SafePlay combines powerful AI technology with an intuitive interface to give you complete control over your YouTube experience.
+            SafePlay combines powerful technology with an intuitive interface to give you complete control over your YouTube experience.
           </p>
         </div>
 

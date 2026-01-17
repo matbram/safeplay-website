@@ -90,7 +90,7 @@ export default function FilterPage() {
       { progress: 10, message: "Checking cache..." },
       { progress: 25, message: "Downloading video..." },
       { progress: 50, message: "Extracting audio..." },
-      { progress: 75, message: "Transcribing with AI..." },
+      { progress: 75, message: "Analyzing audio..." },
       { progress: 90, message: "Detecting profanity..." },
       { progress: 100, message: "Complete!" },
     ];

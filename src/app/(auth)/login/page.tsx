@@ -201,14 +201,14 @@ export default function LoginPage() {
               Clean YouTube viewing for the whole family
             </h2>
             <p className="text-white/80 text-lg">
-              SafePlay uses advanced AI to automatically filter profanity from YouTube videos. Watch anything, worry-free.
+              SafePlay automatically filters profanity from YouTube videos with incredible accuracy. Watch anything, worry-free.
             </p>
           </div>
 
           {/* Feature List */}
           <ul className="space-y-4">
             {[
-              "AI-powered profanity detection",
+              "Precision profanity detection",
               "Choose mute or bleep mode",
               "Works with any YouTube video",
               "Family profiles & parental controls",

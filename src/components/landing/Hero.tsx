@@ -36,7 +36,7 @@ export function Hero() {
 
           {/* Subheadline */}
           <p className="mt-6 text-lg sm:text-xl text-muted-foreground max-w-2xl mx-auto animate-fade-in-up stagger-2">
-            SafePlay uses advanced AI to automatically mute or bleep profanity in any YouTube video.
+            SafePlay automatically mutes or bleeps profanity in any YouTube video with incredible precision.
             Perfect for families, classrooms, and workplaces.
           </p>
 
