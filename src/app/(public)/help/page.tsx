@@ -25,47 +25,53 @@ const categories = [
     icon: Chrome,
     title: "Getting Started",
     description: "Installation, setup, and your first filtered video",
-    articles: 8,
+    articles: 5,
+    href: "/help/getting-started",
   },
   {
     icon: Shield,
     title: "Filtering & Detection",
     description: "How filtering works, accuracy, and customization",
-    articles: 12,
+    articles: 6,
+    href: "/help/filtering",
   },
   {
     icon: CreditCard,
     title: "Billing & Credits",
     description: "Plans, payments, credits, and refunds",
-    articles: 10,
+    articles: 7,
+    href: "/help/billing",
   },
   {
     icon: Users,
     title: "Family & Profiles",
     description: "Managing family members and parental controls",
-    articles: 7,
+    articles: 6,
+    href: "/help/family",
   },
   {
     icon: Settings,
     title: "Account Settings",
     description: "Profile, preferences, and security",
-    articles: 9,
+    articles: 5,
+    href: "/help/getting-started#dashboard-overview",
   },
   {
     icon: BookOpen,
     title: "Troubleshooting",
     description: "Common issues and how to fix them",
-    articles: 15,
+    articles: 4,
+    href: "/help/filtering#video-compatibility",
   },
 ];
 
 const popularArticles = [
-  "How to install the Chrome extension",
-  "Understanding credits and billing",
-  "Setting up family profiles",
-  "Customizing your filter settings",
-  "What videos does SafePlay work with?",
-  "How to cancel or change your subscription",
+  { title: "How to install the Chrome extension", href: "/help/getting-started#install-extension" },
+  { title: "Understanding credits and billing", href: "/help/billing#how-credits-work" },
+  { title: "Setting up family profiles", href: "/help/family#create-profiles" },
+  { title: "Customizing your filter settings", href: "/help/filtering#custom-filters" },
+  { title: "What videos does SafePlay work with?", href: "/help/filtering#video-compatibility" },
+  { title: "How to cancel or change your subscription", href: "/help/billing#cancel-subscription" },
 ];
 
 export default function HelpPage() {
@@ -113,7 +119,7 @@ export default function HelpPage() {
               {categories.map((category) => (
                 <Link
                   key={category.title}
-                  href="/faq"
+                  href={category.href}
                   className="group p-6 rounded-2xl bg-card border border-border hover:border-primary/30 transition-all"
                 >
                   <div className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center mb-4 group-hover:bg-primary/20 transition-colors">
@@ -143,12 +149,12 @@ export default function HelpPage() {
               <div className="space-y-3">
                 {popularArticles.map((article) => (
                   <Link
-                    key={article}
-                    href="/faq"
+                    key={article.title}
+                    href={article.href}
                     className="flex items-center justify-between p-4 rounded-xl bg-card border border-border hover:border-primary/30 transition-colors group"
                   >
                     <span className="text-foreground group-hover:text-primary transition-colors">
-                      {article}
+                      {article.title}
                     </span>
                     <ArrowRight className="w-4 h-4 text-muted-foreground group-hover:text-primary transition-colors" />
                   </Link>

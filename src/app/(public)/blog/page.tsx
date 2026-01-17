@@ -16,7 +16,7 @@ const posts = [
     category: "Family Tips",
     date: "Jan 15, 2026",
     readTime: "5 min read",
-    image: "/blog/screen-time.jpg",
+    href: "/blog/screen-time-tips",
   },
   {
     title: "Why Content Filtering Matters for Classrooms",
@@ -24,7 +24,7 @@ const posts = [
     category: "Education",
     date: "Jan 10, 2026",
     readTime: "4 min read",
-    image: "/blog/classroom.jpg",
+    href: "/blog/classroom-filtering",
   },
   {
     title: "New Feature: Custom Word Filters",
@@ -32,7 +32,7 @@ const posts = [
     category: "Product Updates",
     date: "Jan 5, 2026",
     readTime: "3 min read",
-    image: "/blog/custom-filters.jpg",
+    href: "/blog/custom-filters",
   },
   {
     title: "The Best Educational YouTube Channels for Kids",
@@ -40,7 +40,7 @@ const posts = [
     category: "Recommendations",
     date: "Dec 28, 2025",
     readTime: "6 min read",
-    image: "/blog/edu-channels.jpg",
+    href: "/blog/edu-channels",
   },
   {
     title: "How SafePlay Protects Your Privacy",
@@ -48,7 +48,7 @@ const posts = [
     category: "Company",
     date: "Dec 20, 2025",
     readTime: "4 min read",
-    image: "/blog/privacy.jpg",
+    href: "/blog/privacy-inside-look",
   },
   {
     title: "Family Movie Night Made Easy",
@@ -56,7 +56,7 @@ const posts = [
     category: "Family Tips",
     date: "Dec 15, 2025",
     readTime: "5 min read",
-    image: "/blog/movie-night.jpg",
+    href: "/blog/movie-night",
   },
 ];
 
@@ -113,8 +113,9 @@ export default function BlogPage() {
           <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
             <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
               {posts.map((post) => (
-                <article
+                <Link
                   key={post.title}
+                  href={post.href}
                   className="group rounded-2xl bg-card border border-border overflow-hidden hover:border-primary/30 transition-colors"
                 >
                   <div className="aspect-video bg-gradient-to-br from-slate-200 to-slate-300 dark:from-slate-700 dark:to-slate-800" />
@@ -144,7 +145,7 @@ export default function BlogPage() {
                       </span>
                     </div>
                   </div>
-                </article>
+                </Link>
               ))}
             </div>
 
