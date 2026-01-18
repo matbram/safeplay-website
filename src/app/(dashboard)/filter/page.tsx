@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -19,8 +19,9 @@ import {
   Loader2,
   Plus,
   X,
+  RefreshCw,
 } from "lucide-react";
-import { cn, extractYouTubeId, formatDuration, calculateCreditCost } from "@/lib/utils";
+import { cn, extractYouTubeId, formatDuration } from "@/lib/utils";
 import { useUser } from "@/contexts/user-context";
 
 type FilterStatus = "idle" | "loading" | "preview" | "processing" | "success" | "error";
@@ -28,14 +29,23 @@ type FilterStatus = "idle" | "loading" | "preview" | "processing" | "success" | 
 interface VideoPreview {
   youtube_id: string;
   title: string;
-  channel_name: string;
+  channel_name: string | null;
   duration_seconds: number;
   thumbnail_url: string;
   credit_cost: number;
+  cached?: boolean;
+  has_transcript?: boolean;
+  job_id?: string;
+}
+
+interface FilterResult {
+  video: VideoPreview;
+  credits_used: number;
+  history_id?: string;
 }
 
 export default function FilterPage() {
-  const { credits, loading: userLoading } = useUser();
+  const { credits, loading: userLoading, refetch: refetchUser } = useUser();
   const [url, setUrl] = useState("");
   const [status, setStatus] = useState<FilterStatus>("idle");
   const [filterType, setFilterType] = useState<"mute" | "bleep">("mute");
@@ -44,10 +54,22 @@ export default function FilterPage() {
   const [progress, setProgress] = useState(0);
   const [progressMessage, setProgressMessage] = useState("");
   const [error, setError] = useState("");
+  const [videoPreview, setVideoPreview] = useState<VideoPreview | null>(null);
+  const [filterResult, setFilterResult] = useState<FilterResult | null>(null);
+  const [jobId, setJobId] = useState<string | null>(null);
+  const pollingRef = useRef<NodeJS.Timeout | null>(null);
 
   // Get real user credits
   const userCredits = credits?.available_credits || 0;
-  const [videoPreview, setVideoPreview] = useState<VideoPreview | null>(null);
+
+  // Cleanup polling on unmount
+  useEffect(() => {
+    return () => {
+      if (pollingRef.current) {
+        clearInterval(pollingRef.current);
+      }
+    };
+  }, []);
 
   const handleUrlSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -61,51 +83,187 @@ export default function FilterPage() {
 
     setStatus("loading");
 
-    // TODO: Call actual API to get video metadata
-    // For now, simulate API call
-    await new Promise((resolve) => setTimeout(resolve, 1000));
+    try {
+      const response = await fetch("/api/filter/preview", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ youtube_id: youtubeId }),
+      });
 
-    // Mock video data - in production this would come from the API
-    setVideoPreview({
-      youtube_id: youtubeId,
-      title: "Video Preview",
-      channel_name: "Loading...",
-      duration_seconds: 300, // 5 minutes default
-      thumbnail_url: `https://img.youtube.com/vi/${youtubeId}/maxresdefault.jpg`,
-      credit_cost: calculateCreditCost(300),
-    });
-    setStatus("preview");
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to fetch video info");
+      }
+
+      // If video is being processed, we need to wait for metadata
+      if (data.status === "processing" && data.job_id) {
+        setVideoPreview({
+          youtube_id: data.youtube_id,
+          title: "Fetching video info...",
+          channel_name: null,
+          duration_seconds: 0,
+          thumbnail_url: data.thumbnail_url,
+          credit_cost: 0,
+          job_id: data.job_id,
+        });
+        setJobId(data.job_id);
+        setStatus("processing");
+        setProgressMessage("Fetching video metadata...");
+        startPolling(data.job_id);
+        return;
+      }
+
+      setVideoPreview({
+        youtube_id: data.youtube_id,
+        title: data.title,
+        channel_name: data.channel_name,
+        duration_seconds: data.duration_seconds,
+        thumbnail_url: data.thumbnail_url,
+        credit_cost: data.credit_cost,
+        cached: data.cached,
+        has_transcript: data.has_transcript,
+      });
+      setStatus("preview");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to fetch video info");
+      setStatus("idle");
+    }
+  };
+
+  const startPolling = (currentJobId: string) => {
+    // Clear any existing polling
+    if (pollingRef.current) {
+      clearInterval(pollingRef.current);
+    }
+
+    let attempts = 0;
+    const maxAttempts = 180; // 6 minutes max
+
+    pollingRef.current = setInterval(async () => {
+      attempts++;
+
+      if (attempts > maxAttempts) {
+        clearInterval(pollingRef.current!);
+        setError("Processing timed out. Please try again.");
+        setStatus("error");
+        return;
+      }
+
+      try {
+        const response = await fetch(`/api/filter/status/${currentJobId}`);
+        const data = await response.json();
+
+        if (!response.ok) {
+          clearInterval(pollingRef.current!);
+          setError(data.error || "Processing failed");
+          setStatus("error");
+          return;
+        }
+
+        setProgress(data.progress || 0);
+        setProgressMessage(data.message || "Processing...");
+
+        // Update video info if available
+        if (data.video && videoPreview) {
+          setVideoPreview({
+            ...videoPreview,
+            title: data.video.title || videoPreview.title,
+            channel_name: data.video.channel_name,
+            duration_seconds: data.video.duration_seconds || videoPreview.duration_seconds,
+          });
+        }
+
+        if (data.status === "completed") {
+          clearInterval(pollingRef.current!);
+          setFilterResult({
+            video: {
+              youtube_id: data.video?.youtube_id || videoPreview?.youtube_id || "",
+              title: data.video?.title || videoPreview?.title || "Video",
+              channel_name: data.video?.channel_name || null,
+              duration_seconds: data.video?.duration_seconds || 0,
+              thumbnail_url: data.video?.thumbnail_url || videoPreview?.thumbnail_url || "",
+              credit_cost: data.credits_used || 0,
+            },
+            credits_used: data.credits_used || 0,
+            history_id: data.history_id,
+          });
+          setStatus("success");
+          // Refresh user credits
+          refetchUser();
+        } else if (data.status === "failed") {
+          clearInterval(pollingRef.current!);
+          setError(data.error || "Processing failed");
+          setStatus("error");
+        }
+      } catch (err) {
+        // Don't stop polling on network errors, just log
+        console.error("Polling error:", err);
+      }
+    }, 2000); // Poll every 2 seconds
   };
 
   const handleFilter = async () => {
     if (!videoPreview) return;
 
-    if (videoPreview.credit_cost > userCredits) {
+    // Check credits before starting
+    if (videoPreview.credit_cost > userCredits && !videoPreview.has_transcript) {
       setError("Insufficient credits. Please upgrade your plan or purchase more credits.");
       return;
     }
 
     setStatus("processing");
     setProgress(0);
+    setProgressMessage("Starting filter process...");
+    setError("");
 
-    // TODO: Call actual filtering API
-    // For now, simulate processing stages
-    const stages = [
-      { progress: 10, message: "Preparing video..." },
-      { progress: 25, message: "Downloading video..." },
-      { progress: 50, message: "Extracting audio..." },
-      { progress: 75, message: "Analyzing audio..." },
-      { progress: 90, message: "Detecting profanity..." },
-      { progress: 100, message: "Complete!" },
-    ];
+    try {
+      const response = await fetch("/api/filter/start", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          youtube_id: videoPreview.youtube_id,
+          filter_type: filterType,
+          custom_words: customWords.length > 0 ? customWords : undefined,
+        }),
+      });
 
-    for (const stage of stages) {
-      await new Promise((resolve) => setTimeout(resolve, 800));
-      setProgress(stage.progress);
-      setProgressMessage(stage.message);
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to start filtering");
+      }
+
+      // If already completed (cached), show success immediately
+      if (data.status === "completed") {
+        setFilterResult({
+          video: {
+            youtube_id: data.video?.youtube_id || videoPreview.youtube_id,
+            title: data.video?.title || videoPreview.title,
+            channel_name: data.video?.channel_name || videoPreview.channel_name,
+            duration_seconds: data.video?.duration_seconds || videoPreview.duration_seconds,
+            thumbnail_url: data.video?.thumbnail_url || videoPreview.thumbnail_url,
+            credit_cost: data.credits_used || 0,
+          },
+          credits_used: data.credits_used || 0,
+          history_id: data.history_id,
+        });
+        setProgress(100);
+        setProgressMessage("Complete!");
+        setStatus("success");
+        refetchUser();
+        return;
+      }
+
+      // Processing started, begin polling
+      if (data.status === "processing" && data.job_id) {
+        setJobId(data.job_id);
+        startPolling(data.job_id);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to start filtering");
+      setStatus("preview");
     }
-
-    setStatus("success");
   };
 
   const handleAddCustomWord = () => {
@@ -120,12 +278,19 @@ export default function FilterPage() {
   };
 
   const handleReset = () => {
+    // Stop any active polling
+    if (pollingRef.current) {
+      clearInterval(pollingRef.current);
+    }
     setUrl("");
     setStatus("idle");
     setVideoPreview(null);
+    setFilterResult(null);
+    setJobId(null);
     setProgress(0);
     setProgressMessage("");
     setError("");
+    setCustomWords([]);
   };
 
   if (userLoading) {
@@ -199,6 +364,25 @@ export default function FilterPage() {
         </Card>
       )}
 
+      {/* Error State */}
+      {status === "error" && (
+        <Card className="border-error">
+          <CardContent className="p-6 text-center space-y-4">
+            <div className="w-16 h-16 rounded-full bg-error-light flex items-center justify-center mx-auto">
+              <AlertCircle className="w-8 h-8 text-error" />
+            </div>
+            <div>
+              <h3 className="text-lg font-semibold">Processing Failed</h3>
+              <p className="text-muted-foreground mt-1">{error}</p>
+            </div>
+            <Button onClick={handleReset}>
+              <RefreshCw className="w-4 h-4 mr-2" />
+              Try Again
+            </Button>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Video Preview */}
       {status === "preview" && videoPreview && (
         <Card>
@@ -223,7 +407,7 @@ export default function FilterPage() {
                   {videoPreview.title}
                 </h3>
                 <p className="text-sm text-muted-foreground mt-1">
-                  {videoPreview.channel_name}
+                  {videoPreview.channel_name || "Unknown Channel"}
                 </p>
                 <div className="flex items-center gap-4 mt-3 text-sm">
                   <div className="flex items-center gap-1">
@@ -232,8 +416,15 @@ export default function FilterPage() {
                   </div>
                   <div className="flex items-center gap-1 text-primary font-medium">
                     <Coins className="w-4 h-4" />
-                    <span>{videoPreview.credit_cost} credits</span>
+                    <span>
+                      {videoPreview.has_transcript ? "Free (cached)" : `${videoPreview.credit_cost} credits`}
+                    </span>
                   </div>
+                  {videoPreview.has_transcript && (
+                    <Badge variant="success" className="text-xs">
+                      Previously filtered
+                    </Badge>
+                  )}
                 </div>
               </div>
             </div>
@@ -348,18 +539,20 @@ export default function FilterPage() {
               <div className="flex items-center justify-between">
                 <span className="text-muted-foreground">Cost</span>
                 <span className="font-semibold">
-                  {videoPreview.credit_cost} credits
+                  {videoPreview.has_transcript ? "Free (re-watch)" : `${videoPreview.credit_cost} credits`}
                 </span>
               </div>
-              <div className="flex items-center justify-between mt-2">
-                <span className="text-muted-foreground">After filtering</span>
-                <span className={cn(
-                  "font-semibold",
-                  userCredits - videoPreview.credit_cost < 0 && "text-error"
-                )}>
-                  {userCredits - videoPreview.credit_cost} credits remaining
-                </span>
-              </div>
+              {!videoPreview.has_transcript && (
+                <div className="flex items-center justify-between mt-2">
+                  <span className="text-muted-foreground">After filtering</span>
+                  <span className={cn(
+                    "font-semibold",
+                    userCredits - videoPreview.credit_cost < 0 && "text-error"
+                  )}>
+                    {userCredits - videoPreview.credit_cost} credits remaining
+                  </span>
+                </div>
+              )}
             </div>
 
             {error && (
@@ -377,7 +570,7 @@ export default function FilterPage() {
               <Button
                 className="flex-1"
                 onClick={handleFilter}
-                disabled={videoPreview.credit_cost > userCredits}
+                disabled={!videoPreview.has_transcript && videoPreview.credit_cost > userCredits}
               >
                 <Play className="w-4 h-4 mr-2" />
                 Filter This Video
@@ -402,12 +595,34 @@ export default function FilterPage() {
               <Progress value={progress} className="h-2" />
               <p className="text-sm text-muted-foreground mt-2">{progress}%</p>
             </div>
+            {videoPreview && (
+              <div className="p-4 rounded-lg bg-muted/50 text-left">
+                <div className="flex gap-4">
+                  <div className="relative w-24 h-16 bg-muted rounded-lg overflow-hidden flex-shrink-0">
+                    <img
+                      src={videoPreview.thumbnail_url}
+                      alt={videoPreview.title}
+                      className="w-full h-full object-cover"
+                    />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-medium text-sm line-clamp-2">{videoPreview.title}</p>
+                    {videoPreview.channel_name && (
+                      <p className="text-xs text-muted-foreground mt-1">{videoPreview.channel_name}</p>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+            <Button variant="outline" onClick={handleReset}>
+              Cancel
+            </Button>
           </CardContent>
         </Card>
       )}
 
       {/* Success State */}
-      {status === "success" && videoPreview && (
+      {status === "success" && filterResult && (
         <Card>
           <CardContent className="p-8 text-center space-y-6">
             <div className="w-16 h-16 rounded-full bg-success-light flex items-center justify-center mx-auto">
@@ -416,7 +631,9 @@ export default function FilterPage() {
             <div>
               <h3 className="text-lg font-semibold">Video Filtered Successfully!</h3>
               <p className="text-muted-foreground mt-1">
-                {videoPreview.credit_cost} credits have been deducted from your account.
+                {filterResult.credits_used > 0
+                  ? `${filterResult.credits_used} credits have been deducted from your account.`
+                  : "No credits were used (previously filtered video)."}
               </p>
             </div>
 
@@ -424,8 +641,8 @@ export default function FilterPage() {
               <div className="flex gap-4">
                 <div className="relative w-32 h-20 bg-muted rounded-lg overflow-hidden flex-shrink-0">
                   <img
-                    src={videoPreview.thumbnail_url}
-                    alt={videoPreview.title}
+                    src={filterResult.video.thumbnail_url}
+                    alt={filterResult.video.title}
                     className="w-full h-full object-cover"
                     onError={(e) => {
                       e.currentTarget.style.display = "none";
@@ -433,12 +650,20 @@ export default function FilterPage() {
                   />
                 </div>
                 <div>
-                  <p className="font-medium line-clamp-2">{videoPreview.title}</p>
+                  <p className="font-medium line-clamp-2">{filterResult.video.title}</p>
+                  {filterResult.video.channel_name && (
+                    <p className="text-xs text-muted-foreground mt-1">{filterResult.video.channel_name}</p>
+                  )}
                   <div className="flex items-center gap-2 mt-2">
                     <Badge variant="success">Filtered</Badge>
                     <Badge variant="muted" className="capitalize">
                       {filterType}
                     </Badge>
+                    {filterResult.video.duration_seconds > 0 && (
+                      <span className="text-xs text-muted-foreground">
+                        {formatDuration(filterResult.video.duration_seconds)}
+                      </span>
+                    )}
                   </div>
                 </div>
               </div>
