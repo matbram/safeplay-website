@@ -1,29 +1,41 @@
 "use client";
 
-import { useState } from "react";
+import { useState, Suspense } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Shield, Mail, Lock, Eye, EyeOff } from "lucide-react";
+import { createClient } from "@/lib/supabase/client";
 
-export default function LoginPage() {
+function LoginForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const returnTo = searchParams.get("returnTo") || "/dashboard";
+  const errorParam = searchParams.get("error");
+
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [isGoogleLoading, setIsGoogleLoading] = useState(false);
   const [formData, setFormData] = useState({
     email: "",
     password: "",
     rememberMe: false,
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [generalError, setGeneralError] = useState(
+    errorParam === "auth_callback_error" ? "Authentication failed. Please try again." : ""
+  );
+
+  const supabase = createClient();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
     setErrors({});
+    setGeneralError("");
 
     // Basic validation
     const newErrors: Record<string, string> = {};
@@ -42,12 +54,65 @@ export default function LoginPage() {
       return;
     }
 
-    // TODO: Implement actual login with Supabase
-    // Simulate API call
-    await new Promise((resolve) => setTimeout(resolve, 1000));
+    try {
+      if (!supabase) {
+        setGeneralError("Unable to connect. Please refresh the page.");
+        setIsLoading(false);
+        return;
+      }
 
-    // Redirect to dashboard on success
-    router.push("/dashboard");
+      const { error } = await supabase.auth.signInWithPassword({
+        email: formData.email,
+        password: formData.password,
+      });
+
+      if (error) {
+        if (error.message.includes("Invalid login credentials")) {
+          setGeneralError("Invalid email or password");
+        } else if (error.message.includes("Email not confirmed")) {
+          setGeneralError("Please verify your email before logging in. Check your inbox for the verification link.");
+        } else {
+          setGeneralError(error.message);
+        }
+        setIsLoading(false);
+        return;
+      }
+
+      // Redirect to dashboard on success
+      router.push(returnTo);
+      router.refresh();
+    } catch (error) {
+      setGeneralError("An unexpected error occurred. Please try again.");
+      setIsLoading(false);
+    }
+  };
+
+  const handleGoogleLogin = async () => {
+    setIsGoogleLoading(true);
+    setGeneralError("");
+
+    try {
+      if (!supabase) {
+        setGeneralError("Unable to connect. Please refresh the page.");
+        setIsGoogleLoading(false);
+        return;
+      }
+
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: "google",
+        options: {
+          redirectTo: `${window.location.origin}/api/auth/callback?next=${encodeURIComponent(returnTo)}`,
+        },
+      });
+
+      if (error) {
+        setGeneralError(error.message);
+        setIsGoogleLoading(false);
+      }
+    } catch (error) {
+      setGeneralError("Failed to connect to Google. Please try again.");
+      setIsGoogleLoading(false);
+    }
   };
 
   return (
@@ -68,6 +133,13 @@ export default function LoginPage() {
               Sign in to your account to continue
             </p>
           </div>
+
+          {/* General Error */}
+          {generalError && (
+            <div className="p-4 rounded-lg bg-destructive/10 border border-destructive/20 text-destructive text-sm">
+              {generalError}
+            </div>
+          )}
 
           {/* Form */}
           <form onSubmit={handleSubmit} className="mt-8 space-y-6">
@@ -156,7 +228,14 @@ export default function LoginPage() {
             </div>
 
             {/* Social Login */}
-            <Button variant="outline" className="w-full" size="lg" type="button">
+            <Button
+              variant="outline"
+              className="w-full"
+              size="lg"
+              type="button"
+              onClick={handleGoogleLogin}
+              loading={isGoogleLoading}
+            >
               <svg className="w-5 h-5 mr-2" viewBox="0 0 24 24">
                 <path
                   fill="currentColor"
@@ -236,5 +315,17 @@ export default function LoginPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="animate-pulse">Loading...</div>
+      </div>
+    }>
+      <LoginForm />
+    </Suspense>
   );
 }

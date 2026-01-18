@@ -6,12 +6,15 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Shield, Mail, ArrowLeft, CheckCircle } from "lucide-react";
+import { createClient } from "@/lib/supabase/client";
 
 export default function ForgotPasswordPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [isSubmitted, setIsSubmitted] = useState(false);
   const [email, setEmail] = useState("");
   const [error, setError] = useState("");
+
+  const supabase = createClient();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -28,11 +31,29 @@ export default function ForgotPasswordPage() {
 
     setIsLoading(true);
 
-    // TODO: Implement actual password reset with Supabase
-    // Simulate API call
-    await new Promise((resolve) => setTimeout(resolve, 1000));
+    try {
+      if (!supabase) {
+        setError("Unable to connect. Please refresh the page.");
+        setIsLoading(false);
+        return;
+      }
 
-    setIsSubmitted(true);
+      const { error: resetError } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: `${window.location.origin}/reset-password`,
+      });
+
+      if (resetError) {
+        setError(resetError.message);
+        setIsLoading(false);
+        return;
+      }
+
+      // Always show success to prevent email enumeration
+      setIsSubmitted(true);
+    } catch (err) {
+      setError("An unexpected error occurred. Please try again.");
+    }
+
     setIsLoading(false);
   };
 
