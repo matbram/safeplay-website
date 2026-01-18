@@ -13,9 +13,9 @@ export async function GET(
     const supabase = await createClient();
 
     // Get authenticated user
-    const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+    const { data: { user }, error: userError } = await supabase.auth.getUser();
 
-    if (sessionError || !session) {
+    if (userError || !user) {
       return NextResponse.json(
         { error: "Unauthorized" },
         { status: 401 }
@@ -27,7 +27,7 @@ export async function GET(
       .from("filter_jobs")
       .select("*")
       .eq("job_id", jobId)
-      .eq("user_id", session.user.id)
+      .eq("user_id", user.id)
       .single();
 
     if (!jobRecord) {
@@ -99,7 +99,7 @@ export async function GET(
       const { data: creditBalance } = await supabase
         .from("credit_balances")
         .select("*")
-        .eq("user_id", session.user.id)
+        .eq("user_id", user.id)
         .single();
 
       const availableCredits = creditBalance?.available_credits || 0;
@@ -135,11 +135,11 @@ export async function GET(
             available_credits: newBalance,
             used_this_period: newUsed,
           })
-          .eq("user_id", session.user.id);
+          .eq("user_id", user.id);
 
         // Record credit transaction
         await supabase.from("credit_transactions").insert({
-          user_id: session.user.id,
+          user_id: user.id,
           amount: -creditCost,
           balance_after: newBalance,
           type: "filter",
@@ -165,7 +165,7 @@ export async function GET(
         const { data: historyEntry } = await supabase
           .from("filter_history")
           .insert({
-            user_id: session.user.id,
+            user_id: user.id,
             video_id: videoRecord?.id,
             filter_type: jobRecord.filter_type || "mute",
             custom_words: jobRecord.custom_words || [],

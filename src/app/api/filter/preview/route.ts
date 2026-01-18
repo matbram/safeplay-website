@@ -9,9 +9,9 @@ export async function POST(request: Request) {
     const supabase = await createClient();
 
     // Get authenticated user
-    const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+    const { data: { user }, error: userError } = await supabase.auth.getUser();
 
-    if (sessionError || !session) {
+    if (userError || !user) {
       return NextResponse.json(
         { error: "Unauthorized" },
         { status: 401 }
@@ -111,6 +111,17 @@ export async function POST(request: Request) {
 
     // If processing started, return job info with estimated duration
     if (data.status === "processing" && data.job_id) {
+      // Save the job to the database so status polling can find it
+      await supabase.from("filter_jobs").upsert({
+        job_id: data.job_id,
+        user_id: user.id,
+        youtube_id: videoId,
+        filter_type: "mute",
+        custom_words: [],
+        status: "processing",
+        created_at: new Date().toISOString(),
+      });
+
       return NextResponse.json({
         youtube_id: videoId,
         title: "Loading video info...",
