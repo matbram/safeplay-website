@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -19,91 +19,36 @@ import {
   Download,
   Trash2,
   Filter,
-  Calendar,
   Film,
   Clock,
   Coins,
   ChevronLeft,
   ChevronRight,
+  Loader2,
 } from "lucide-react";
 import { formatDuration, formatDate } from "@/lib/utils";
+import { useUser } from "@/contexts/user-context";
+import { createClient } from "@/lib/supabase/client";
 
-// Mock data
-const mockHistory = [
-  {
-    id: "1",
-    video: {
-      youtube_id: "abc123",
-      title: "Amazing Nature Documentary - The Wonders of Planet Earth",
-      channel_name: "Nature Channel",
-      duration_seconds: 2732,
-      thumbnail_url: "",
-    },
-    filter_type: "mute",
-    credits_used: 46,
-    created_at: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000),
-  },
-  {
-    id: "2",
-    video: {
-      youtube_id: "def456",
-      title: "Cooking with Gordon - Perfect Steak Guide",
-      channel_name: "Gordon Ramsay",
-      duration_seconds: 735,
-      thumbnail_url: "",
-    },
-    filter_type: "bleep",
-    credits_used: 13,
-    created_at: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000),
-  },
-  {
-    id: "3",
-    video: {
-      youtube_id: "ghi789",
-      title: "Tech Review: Latest Gadgets 2026",
-      channel_name: "TechReviewer",
-      duration_seconds: 1824,
-      thumbnail_url: "",
-    },
-    filter_type: "mute",
-    credits_used: 31,
-    created_at: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000),
-  },
-  {
-    id: "4",
-    video: {
-      youtube_id: "jkl012",
-      title: "Learn Python Programming - Full Course for Beginners",
-      channel_name: "Code Academy",
-      duration_seconds: 14400,
-      thumbnail_url: "",
-    },
-    filter_type: "mute",
-    credits_used: 240,
-    created_at: new Date(Date.now() - 14 * 24 * 60 * 60 * 1000),
-  },
-  {
-    id: "5",
-    video: {
-      youtube_id: "mno345",
-      title: "Movie Review: The Latest Blockbuster",
-      channel_name: "Film Critics",
-      duration_seconds: 1200,
-      thumbnail_url: "",
-    },
-    filter_type: "bleep",
-    credits_used: 20,
-    created_at: new Date(Date.now() - 21 * 24 * 60 * 60 * 1000),
-  },
-];
-
-const stats = {
-  totalVideos: 47,
-  totalMinutes: 823,
-  totalCredits: 823,
-};
+interface HistoryItem {
+  id: string;
+  video_id: string;
+  filter_type: string;
+  credits_used: number;
+  created_at: string;
+  videos?: {
+    youtube_id: string;
+    title: string;
+    channel_name?: string;
+    duration_seconds: number;
+    thumbnail_url?: string;
+  };
+}
 
 export default function HistoryPage() {
+  const { user, credits, loading: userLoading } = useUser();
+  const [history, setHistory] = useState<HistoryItem[]>([]);
+  const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [filterType, setFilterType] = useState<string>("all");
   const [sortBy, setSortBy] = useState<string>("recent");
@@ -111,9 +56,73 @@ export default function HistoryPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 10;
 
-  const filteredHistory = mockHistory
+  // Stats calculated from real data
+  const [stats, setStats] = useState({
+    totalVideos: 0,
+    totalMinutes: 0,
+    totalCredits: 0,
+  });
+
+  const supabase = createClient();
+
+  useEffect(() => {
+    async function fetchHistory() {
+      if (!user) return;
+
+      setLoading(true);
+      try {
+        const { data, error } = await supabase
+          .from("filter_history")
+          .select(`
+            id,
+            video_id,
+            filter_type,
+            credits_used,
+            created_at,
+            videos (
+              youtube_id,
+              title,
+              channel_name,
+              duration_seconds,
+              thumbnail_url
+            )
+          `)
+          .eq("user_id", user.id)
+          .order("created_at", { ascending: false });
+
+        if (error) {
+          console.error("Error fetching history:", error);
+          setHistory([]);
+        } else {
+          setHistory(data || []);
+
+          // Calculate stats
+          const totalVideos = data?.length || 0;
+          const totalMinutes = Math.round(
+            (data || []).reduce((acc: number, item: HistoryItem) => {
+              return acc + (item.videos?.duration_seconds || 0);
+            }, 0) / 60
+          );
+          const totalCredits = (data || []).reduce((acc: number, item: HistoryItem) => {
+            return acc + (item.credits_used || 0);
+          }, 0);
+
+          setStats({ totalVideos, totalMinutes, totalCredits });
+        }
+      } catch (err) {
+        console.error("Error:", err);
+        setHistory([]);
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    fetchHistory();
+  }, [user, supabase]);
+
+  const filteredHistory = history
     .filter((item) => {
-      const matchesSearch = item.video.title
+      const matchesSearch = (item.videos?.title || "")
         .toLowerCase()
         .includes(searchQuery.toLowerCase());
       const matchesType =
@@ -123,13 +132,13 @@ export default function HistoryPage() {
     .sort((a, b) => {
       switch (sortBy) {
         case "recent":
-          return b.created_at.getTime() - a.created_at.getTime();
+          return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
         case "oldest":
-          return a.created_at.getTime() - b.created_at.getTime();
+          return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
         case "credits":
           return b.credits_used - a.credits_used;
         case "duration":
-          return b.video.duration_seconds - a.video.duration_seconds;
+          return (b.videos?.duration_seconds || 0) - (a.videos?.duration_seconds || 0);
         default:
           return 0;
       }
@@ -158,14 +167,53 @@ export default function HistoryPage() {
   };
 
   const handleExport = () => {
-    // TODO: Implement CSV export
-    console.log("Exporting...");
+    // Export selected items as CSV
+    const itemsToExport = selectedItems.length > 0
+      ? history.filter(item => selectedItems.includes(item.id))
+      : history;
+
+    const csv = [
+      ["Title", "Channel", "Duration", "Filter Type", "Credits Used", "Date"].join(","),
+      ...itemsToExport.map(item => [
+        `"${item.videos?.title || "Unknown"}"`,
+        `"${item.videos?.channel_name || "Unknown"}"`,
+        formatDuration(item.videos?.duration_seconds || 0),
+        item.filter_type,
+        item.credits_used,
+        new Date(item.created_at).toISOString()
+      ].join(","))
+    ].join("\n");
+
+    const blob = new Blob([csv], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "safeplay-history.csv";
+    a.click();
+    URL.revokeObjectURL(url);
   };
 
-  const handleDelete = () => {
-    // TODO: Implement delete
-    console.log("Deleting...", selectedItems);
+  const handleDelete = async () => {
+    if (selectedItems.length === 0) return;
+
+    const { error } = await supabase
+      .from("filter_history")
+      .delete()
+      .in("id", selectedItems);
+
+    if (!error) {
+      setHistory(history.filter(item => !selectedItems.includes(item.id)));
+      setSelectedItems([]);
+    }
   };
+
+  if (userLoading || loading) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -316,24 +364,32 @@ export default function HistoryPage() {
 
                 {/* Thumbnail */}
                 <div className="relative w-28 h-16 bg-muted rounded-lg overflow-hidden flex-shrink-0">
-                  <div className="absolute inset-0 flex items-center justify-center">
-                    <Play className="w-6 h-6 text-muted-foreground" />
-                  </div>
+                  {item.videos?.thumbnail_url ? (
+                    <img
+                      src={item.videos.thumbnail_url}
+                      alt={item.videos.title}
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <div className="absolute inset-0 flex items-center justify-center">
+                      <Play className="w-6 h-6 text-muted-foreground" />
+                    </div>
+                  )}
                   <div className="absolute bottom-1 right-1 px-1 py-0.5 rounded bg-black/70 text-white text-xs">
-                    {formatDuration(item.video.duration_seconds)}
+                    {formatDuration(item.videos?.duration_seconds || 0)}
                   </div>
                 </div>
 
                 {/* Info */}
                 <div className="flex-1 min-w-0">
-                  <p className="font-medium truncate">{item.video.title}</p>
+                  <p className="font-medium truncate">{item.videos?.title || "Unknown Video"}</p>
                   <div className="flex flex-wrap items-center gap-2 mt-1">
                     <span className="text-xs text-muted-foreground">
-                      {item.video.channel_name}
+                      {item.videos?.channel_name || "Unknown Channel"}
                     </span>
                     <span className="text-muted-foreground">-</span>
                     <span className="text-xs text-muted-foreground">
-                      {formatDate(item.created_at)}
+                      {formatDate(new Date(item.created_at))}
                     </span>
                     <Badge variant="muted" className="text-xs capitalize">
                       {item.filter_type}
@@ -350,7 +406,15 @@ export default function HistoryPage() {
                     <Play className="w-4 h-4 mr-1" />
                     Rewatch
                   </Button>
-                  <Button variant="ghost" size="sm" className="text-error">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="text-error"
+                    onClick={() => {
+                      setSelectedItems([item.id]);
+                      handleDelete();
+                    }}
+                  >
                     <Trash2 className="w-4 h-4" />
                   </Button>
                 </div>

@@ -21,6 +21,7 @@ import {
   X,
 } from "lucide-react";
 import { cn, extractYouTubeId, formatDuration, calculateCreditCost } from "@/lib/utils";
+import { useUser } from "@/contexts/user-context";
 
 type FilterStatus = "idle" | "loading" | "preview" | "processing" | "success" | "error";
 
@@ -34,6 +35,7 @@ interface VideoPreview {
 }
 
 export default function FilterPage() {
+  const { credits, loading: userLoading } = useUser();
   const [url, setUrl] = useState("");
   const [status, setStatus] = useState<FilterStatus>("idle");
   const [filterType, setFilterType] = useState<"mute" | "bleep">("mute");
@@ -43,8 +45,8 @@ export default function FilterPage() {
   const [progressMessage, setProgressMessage] = useState("");
   const [error, setError] = useState("");
 
-  // Mock data
-  const userCredits = 705;
+  // Get real user credits
+  const userCredits = credits?.available_credits || 0;
   const [videoPreview, setVideoPreview] = useState<VideoPreview | null>(null);
 
   const handleUrlSubmit = async (e: React.FormEvent) => {
@@ -59,17 +61,18 @@ export default function FilterPage() {
 
     setStatus("loading");
 
-    // Simulate API call to get video metadata
+    // TODO: Call actual API to get video metadata
+    // For now, simulate API call
     await new Promise((resolve) => setTimeout(resolve, 1000));
 
-    // Mock video data
+    // Mock video data - in production this would come from the API
     setVideoPreview({
       youtube_id: youtubeId,
-      title: "Amazing Nature Documentary - The Wonders of Planet Earth",
-      channel_name: "Nature Channel",
-      duration_seconds: 2732,
+      title: "Video Preview",
+      channel_name: "Loading...",
+      duration_seconds: 300, // 5 minutes default
       thumbnail_url: `https://img.youtube.com/vi/${youtubeId}/maxresdefault.jpg`,
-      credit_cost: calculateCreditCost(2732),
+      credit_cost: calculateCreditCost(300),
     });
     setStatus("preview");
   };
@@ -78,14 +81,15 @@ export default function FilterPage() {
     if (!videoPreview) return;
 
     if (videoPreview.credit_cost > userCredits) {
-      setError("Insufficient credits. Please upgrade your plan.");
+      setError("Insufficient credits. Please upgrade your plan or purchase more credits.");
       return;
     }
 
     setStatus("processing");
     setProgress(0);
 
-    // Simulate processing stages
+    // TODO: Call actual filtering API
+    // For now, simulate processing stages
     const stages = [
       { progress: 10, message: "Preparing video..." },
       { progress: 25, message: "Downloading video..." },
@@ -123,6 +127,14 @@ export default function FilterPage() {
     setProgressMessage("");
     setError("");
   };
+
+  if (userLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-3xl mx-auto space-y-8">
@@ -341,7 +353,10 @@ export default function FilterPage() {
               </div>
               <div className="flex items-center justify-between mt-2">
                 <span className="text-muted-foreground">After filtering</span>
-                <span className="font-semibold">
+                <span className={cn(
+                  "font-semibold",
+                  userCredits - videoPreview.credit_cost < 0 && "text-error"
+                )}>
                   {userCredits - videoPreview.credit_cost} credits remaining
                 </span>
               </div>

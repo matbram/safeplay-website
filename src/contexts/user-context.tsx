@@ -8,6 +8,7 @@ interface UserProfile {
   id: string;
   email: string;
   display_name: string | null;
+  avatar_url: string | null;
   subscription_status: string;
   subscription_tier: string;
   monthly_quota: number;
@@ -80,6 +81,7 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
         id: profile.id,
         email: profile.email || session.user.email || "",
         display_name: profile.display_name,
+        avatar_url: profile.avatar_url || null,
         subscription_status: profile.subscription_status || "active",
         subscription_tier: profile.subscription_tier || "free",
         monthly_quota: profile.monthly_quota || 30,

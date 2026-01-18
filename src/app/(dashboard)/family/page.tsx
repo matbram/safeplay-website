@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -25,80 +25,223 @@ import {
   Eye,
   Coins,
   Film,
-  Clock,
   Shield,
   UserPlus,
+  Loader2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useUser } from "@/contexts/user-context";
+import { createClient } from "@/lib/supabase/client";
 
-// Mock data
-const mockProfiles = [
-  {
-    id: "1",
-    name: "John (You)",
-    avatar_url: null,
-    is_child: false,
-    is_owner: true,
-    credits_used: 220,
-    videos_filtered: 18,
-  },
-  {
-    id: "2",
-    name: "Sarah",
-    avatar_url: null,
-    is_child: false,
-    is_owner: false,
-    credits_used: 250,
-    videos_filtered: 15,
-  },
-  {
-    id: "3",
-    name: "Tommy",
-    avatar_url: null,
-    is_child: true,
-    is_owner: false,
-    credits_used: 130,
-    videos_filtered: 8,
-    restrictions: {
-      max_video_length: 30,
-    },
-  },
-];
+interface FamilyProfile {
+  id: string;
+  name: string;
+  avatar_url: string | null;
+  is_child: boolean;
+  is_owner: boolean;
+  credits_used: number;
+  videos_filtered: number;
+  restrictions?: {
+    max_video_length: number;
+  };
+}
 
-const planLimits = {
-  maxProfiles: 3,
-  currentProfiles: 3,
-  totalCredits: 750,
-  usedCredits: 600,
+const planLimits: Record<string, { maxProfiles: number; totalCredits: number }> = {
+  free: { maxProfiles: 1, totalCredits: 30 },
+  individual: { maxProfiles: 3, totalCredits: 750 },
+  family: { maxProfiles: 10, totalCredits: 1500 },
+  organization: { maxProfiles: 100, totalCredits: 3750 },
 };
 
 export default function FamilyPage() {
-  const [profiles, setProfiles] = useState(mockProfiles);
+  const { user, credits, loading: userLoading } = useUser();
+  const [profiles, setProfiles] = useState<FamilyProfile[]>([]);
+  const [loading, setLoading] = useState(true);
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [showEditDialog, setShowEditDialog] = useState(false);
-  const [selectedProfile, setSelectedProfile] = useState<typeof mockProfiles[0] | null>(null);
+  const [selectedProfile, setSelectedProfile] = useState<FamilyProfile | null>(null);
   const [newProfile, setNewProfile] = useState({
     name: "",
     is_child: false,
     max_video_length: 60,
   });
 
-  const handleAddProfile = () => {
-    // TODO: Implement add profile
+  const supabase = createClient();
+
+  // Fetch family profiles
+  useEffect(() => {
+    async function fetchProfiles() {
+      if (!user) return;
+
+      setLoading(true);
+      try {
+        // Fetch family profiles for this user
+        const { data: familyProfiles, error } = await supabase
+          .from("family_profiles")
+          .select("*")
+          .eq("owner_id", user.id)
+          .order("created_at", { ascending: true });
+
+        if (error) {
+          console.error("Error fetching profiles:", error);
+          // If table doesn't exist or no profiles, create owner profile
+          const ownerProfile: FamilyProfile = {
+            id: user.id,
+            name: user.display_name || user.email?.split("@")[0] || "You",
+            avatar_url: user.avatar_url,
+            is_child: false,
+            is_owner: true,
+            credits_used: credits?.used_this_period || 0,
+            videos_filtered: 0,
+          };
+          setProfiles([ownerProfile]);
+        } else if (familyProfiles && familyProfiles.length > 0) {
+          // Map database profiles to our interface
+          const mappedProfiles: FamilyProfile[] = familyProfiles.map((p: {
+            id: string;
+            name: string;
+            avatar_url: string | null;
+            is_child: boolean;
+            is_owner: boolean;
+            credits_used: number;
+            videos_filtered: number;
+            max_video_length: number | null;
+          }) => ({
+            id: p.id,
+            name: p.name,
+            avatar_url: p.avatar_url,
+            is_child: p.is_child || false,
+            is_owner: p.is_owner || false,
+            credits_used: p.credits_used || 0,
+            videos_filtered: p.videos_filtered || 0,
+            restrictions: p.is_child && p.max_video_length ? { max_video_length: p.max_video_length } : undefined,
+          }));
+          setProfiles(mappedProfiles);
+        } else {
+          // No profiles found, create default owner profile
+          const ownerProfile: FamilyProfile = {
+            id: user.id,
+            name: user.display_name || user.email?.split("@")[0] || "You",
+            avatar_url: user.avatar_url,
+            is_child: false,
+            is_owner: true,
+            credits_used: credits?.used_this_period || 0,
+            videos_filtered: 0,
+          };
+          setProfiles([ownerProfile]);
+        }
+      } catch (err) {
+        console.error("Error:", err);
+        // Fallback to owner profile
+        const ownerProfile: FamilyProfile = {
+          id: user.id,
+          name: user.display_name || user.email?.split("@")[0] || "You",
+          avatar_url: user.avatar_url,
+          is_child: false,
+          is_owner: true,
+          credits_used: credits?.used_this_period || 0,
+          videos_filtered: 0,
+        };
+        setProfiles([ownerProfile]);
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    fetchProfiles();
+  }, [user, credits, supabase]);
+
+  const currentPlan = user?.subscription_tier || "free";
+  const limits = planLimits[currentPlan] || planLimits.free;
+  const totalUsedCredits = profiles.reduce((acc, p) => acc + p.credits_used, 0);
+
+  const handleAddProfile = async () => {
+    if (!user || !newProfile.name.trim()) return;
+
+    try {
+      const { data, error } = await supabase
+        .from("family_profiles")
+        .insert({
+          owner_id: user.id,
+          name: newProfile.name.trim(),
+          is_child: newProfile.is_child,
+          is_owner: false,
+          max_video_length: newProfile.is_child ? newProfile.max_video_length : null,
+          credits_used: 0,
+          videos_filtered: 0,
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      if (data) {
+        const newFamilyProfile: FamilyProfile = {
+          id: data.id,
+          name: data.name,
+          avatar_url: data.avatar_url,
+          is_child: data.is_child,
+          is_owner: false,
+          credits_used: 0,
+          videos_filtered: 0,
+          restrictions: data.is_child && data.max_video_length ? { max_video_length: data.max_video_length } : undefined,
+        };
+        setProfiles([...profiles, newFamilyProfile]);
+      }
+    } catch (err) {
+      console.error("Error adding profile:", err);
+    }
+
     setShowAddDialog(false);
     setNewProfile({ name: "", is_child: false, max_video_length: 60 });
   };
 
-  const handleEditProfile = () => {
-    // TODO: Implement edit profile
+  const handleEditProfile = async () => {
+    if (!selectedProfile) return;
+
+    try {
+      const { error } = await supabase
+        .from("family_profiles")
+        .update({
+          name: selectedProfile.name,
+          is_child: selectedProfile.is_child,
+          max_video_length: selectedProfile.is_child ? selectedProfile.restrictions?.max_video_length : null,
+        })
+        .eq("id", selectedProfile.id);
+
+      if (error) throw error;
+
+      setProfiles(profiles.map(p => p.id === selectedProfile.id ? selectedProfile : p));
+    } catch (err) {
+      console.error("Error updating profile:", err);
+    }
+
     setShowEditDialog(false);
     setSelectedProfile(null);
   };
 
-  const handleDeleteProfile = (id: string) => {
-    // TODO: Implement delete profile
-    setProfiles(profiles.filter((p) => p.id !== id));
+  const handleDeleteProfile = async (id: string) => {
+    try {
+      const { error } = await supabase
+        .from("family_profiles")
+        .delete()
+        .eq("id", id);
+
+      if (error) throw error;
+
+      setProfiles(profiles.filter((p) => p.id !== id));
+    } catch (err) {
+      console.error("Error deleting profile:", err);
+    }
   };
+
+  if (userLoading || loading) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-8">
@@ -112,7 +255,7 @@ export default function FamilyPage() {
         </div>
         <Button
           onClick={() => setShowAddDialog(true)}
-          disabled={planLimits.currentProfiles >= planLimits.maxProfiles}
+          disabled={profiles.length >= limits.maxProfiles}
         >
           <Plus className="w-4 h-4 mr-2" />
           Add Profile
@@ -133,11 +276,11 @@ export default function FamilyPage() {
             <div className="flex items-center justify-between text-sm">
               <span className="text-muted-foreground">Total Usage</span>
               <span className="font-medium">
-                {planLimits.usedCredits} / {planLimits.totalCredits} credits
+                {totalUsedCredits} / {limits.totalCredits} credits
               </span>
             </div>
             <Progress
-              value={(planLimits.usedCredits / planLimits.totalCredits) * 100}
+              value={(totalUsedCredits / limits.totalCredits) * 100}
               className="h-3"
             />
           </div>
@@ -145,7 +288,7 @@ export default function FamilyPage() {
           {/* Per-Profile Breakdown */}
           <div className="space-y-3">
             {profiles.map((profile) => {
-              const percentage = (profile.credits_used / planLimits.totalCredits) * 100;
+              const percentage = (profile.credits_used / limits.totalCredits) * 100;
               return (
                 <div key={profile.id} className="flex items-center gap-4">
                   <Avatar className="h-8 w-8">
@@ -156,12 +299,15 @@ export default function FamilyPage() {
                         profile.is_owner ? "bg-primary" : "bg-secondary"
                       )}
                     >
-                      {profile.name.charAt(0)}
+                      {profile.name.charAt(0).toUpperCase()}
                     </AvatarFallback>
                   </Avatar>
                   <div className="flex-1">
                     <div className="flex items-center justify-between text-sm mb-1">
-                      <span className="font-medium">{profile.name}</span>
+                      <span className="font-medium">
+                        {profile.name}
+                        {profile.is_owner && " (You)"}
+                      </span>
                       <span className="text-muted-foreground">
                         {profile.credits_used} credits
                       </span>
@@ -198,11 +344,14 @@ export default function FamilyPage() {
                         profile.is_owner ? "bg-primary" : "bg-secondary"
                       )}
                     >
-                      {profile.name.charAt(0)}
+                      {profile.name.charAt(0).toUpperCase()}
                     </AvatarFallback>
                   </Avatar>
                   <div>
-                    <p className="font-semibold">{profile.name}</p>
+                    <p className="font-semibold">
+                      {profile.name}
+                      {profile.is_owner && " (You)"}
+                    </p>
                     <div className="flex items-center gap-2 mt-0.5">
                       {profile.is_owner && (
                         <Badge variant="default" className="text-xs">
@@ -283,7 +432,7 @@ export default function FamilyPage() {
         ))}
 
         {/* Add Profile Card */}
-        {planLimits.currentProfiles < planLimits.maxProfiles && (
+        {profiles.length < limits.maxProfiles && (
           <Card
             className="border-dashed cursor-pointer hover:border-primary/50 transition-colors"
             onClick={() => setShowAddDialog(true)}
@@ -294,7 +443,7 @@ export default function FamilyPage() {
               </div>
               <p className="font-medium">Add Profile</p>
               <p className="text-sm text-muted-foreground mt-1">
-                {planLimits.maxProfiles - planLimits.currentProfiles} slots remaining
+                {limits.maxProfiles - profiles.length} slots remaining
               </p>
             </CardContent>
           </Card>
@@ -302,7 +451,7 @@ export default function FamilyPage() {
       </div>
 
       {/* Upgrade Prompt */}
-      {planLimits.currentProfiles >= planLimits.maxProfiles && (
+      {profiles.length >= limits.maxProfiles && currentPlan !== "organization" && (
         <Card className="bg-gradient-to-r from-primary/10 to-secondary/10 border-primary/20">
           <CardContent className="p-6">
             <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
@@ -313,7 +462,7 @@ export default function FamilyPage() {
                 <div>
                   <h3 className="font-semibold">Need more profiles?</h3>
                   <p className="text-sm text-muted-foreground">
-                    Upgrade to Family plan for up to 10 profiles.
+                    Upgrade to {currentPlan === "free" ? "Individual" : currentPlan === "individual" ? "Family" : "Organization"} plan for more profiles.
                   </p>
                 </div>
               </div>
@@ -434,6 +583,7 @@ export default function FamilyPage() {
                     setSelectedProfile({
                       ...selectedProfile,
                       is_child: checked,
+                      restrictions: checked ? { max_video_length: 60 } : undefined,
                     })
                   }
                 />
@@ -445,7 +595,13 @@ export default function FamilyPage() {
                   <Input
                     id="edit-max-length"
                     type="number"
-                    defaultValue={selectedProfile.restrictions?.max_video_length || 60}
+                    value={selectedProfile.restrictions?.max_video_length || 60}
+                    onChange={(e) =>
+                      setSelectedProfile({
+                        ...selectedProfile,
+                        restrictions: { max_video_length: Number(e.target.value) },
+                      })
+                    }
                   />
                 </div>
               )}
