@@ -96,31 +96,14 @@ export default function FilterPage() {
         throw new Error(data.error || "Failed to fetch video info");
       }
 
-      // If video is being processed, we need to wait for metadata
-      if (data.status === "processing" && data.job_id) {
-        setVideoPreview({
-          youtube_id: data.youtube_id,
-          title: "Fetching video info...",
-          channel_name: null,
-          duration_seconds: 0,
-          thumbnail_url: data.thumbnail_url,
-          credit_cost: 0,
-          job_id: data.job_id,
-        });
-        setJobId(data.job_id);
-        setStatus("processing");
-        setProgressMessage("Fetching video metadata...");
-        startPolling(data.job_id);
-        return;
-      }
-
+      // Preview now only fetches metadata - no processing starts yet
       setVideoPreview({
         youtube_id: data.youtube_id,
         title: data.title,
         channel_name: data.channel_name,
-        duration_seconds: data.duration_seconds,
+        duration_seconds: data.duration_seconds || 0,
         thumbnail_url: data.thumbnail_url,
-        credit_cost: data.credit_cost,
+        credit_cost: data.credit_cost || 0,
         cached: data.cached,
         has_transcript: data.has_transcript,
       });
@@ -206,15 +189,21 @@ export default function FilterPage() {
   const handleFilter = async () => {
     if (!videoPreview) return;
 
-    // Check credits before starting
-    if (videoPreview.credit_cost > userCredits && !videoPreview.has_transcript) {
+    // Check credits before starting (only if cost is known)
+    if (videoPreview.credit_cost > 0 && videoPreview.credit_cost > userCredits && !videoPreview.has_transcript) {
       setError("Insufficient credits. Please upgrade your plan or purchase more credits.");
+      return;
+    }
+
+    // Warn if user has no credits and cost is unknown
+    if (userCredits === 0 && !videoPreview.has_transcript && videoPreview.credit_cost === 0) {
+      setError("You have no credits. Videos cost ~1 credit per minute. Please purchase credits first.");
       return;
     }
 
     setStatus("processing");
     setProgress(0);
-    setProgressMessage("Starting filter process...");
+    setProgressMessage("Preparing video...");
     setError("");
 
     try {
@@ -399,7 +388,9 @@ export default function FilterPage() {
                   }}
                 />
                 <div className="absolute bottom-1 right-1 px-1.5 py-0.5 rounded bg-black/70 text-white text-xs">
-                  {formatDuration(videoPreview.duration_seconds)}
+                  {videoPreview.duration_seconds > 0
+                    ? formatDuration(videoPreview.duration_seconds)
+                    : "TBD"}
                 </div>
               </div>
               <div className="flex-1 min-w-0">
@@ -412,12 +403,20 @@ export default function FilterPage() {
                 <div className="flex items-center gap-4 mt-3 text-sm">
                   <div className="flex items-center gap-1">
                     <Clock className="w-4 h-4 text-muted-foreground" />
-                    <span>{formatDuration(videoPreview.duration_seconds)}</span>
+                    <span>
+                      {videoPreview.duration_seconds > 0
+                        ? formatDuration(videoPreview.duration_seconds)
+                        : "Duration TBD"}
+                    </span>
                   </div>
                   <div className="flex items-center gap-1 text-primary font-medium">
                     <Coins className="w-4 h-4" />
                     <span>
-                      {videoPreview.has_transcript ? "Free (cached)" : `${videoPreview.credit_cost} credits`}
+                      {videoPreview.has_transcript
+                        ? "Free (cached)"
+                        : videoPreview.credit_cost > 0
+                          ? `${videoPreview.credit_cost} credits`
+                          : "~1 credit/min"}
                     </span>
                   </div>
                   {videoPreview.has_transcript && (
@@ -539,10 +538,19 @@ export default function FilterPage() {
               <div className="flex items-center justify-between">
                 <span className="text-muted-foreground">Cost</span>
                 <span className="font-semibold">
-                  {videoPreview.has_transcript ? "Free (re-watch)" : `${videoPreview.credit_cost} credits`}
+                  {videoPreview.has_transcript
+                    ? "Free (re-watch)"
+                    : videoPreview.credit_cost > 0
+                      ? `${videoPreview.credit_cost} credits`
+                      : "~1 credit per minute"}
                 </span>
               </div>
-              {!videoPreview.has_transcript && (
+              {!videoPreview.has_transcript && videoPreview.credit_cost === 0 && (
+                <p className="text-xs text-muted-foreground mt-2">
+                  Exact cost will be calculated based on video duration after processing starts.
+                </p>
+              )}
+              {!videoPreview.has_transcript && videoPreview.credit_cost > 0 && (
                 <div className="flex items-center justify-between mt-2">
                   <span className="text-muted-foreground">After filtering</span>
                   <span className={cn(
@@ -570,7 +578,7 @@ export default function FilterPage() {
               <Button
                 className="flex-1"
                 onClick={handleFilter}
-                disabled={!videoPreview.has_transcript && videoPreview.credit_cost > userCredits}
+                disabled={!videoPreview.has_transcript && videoPreview.credit_cost > 0 && videoPreview.credit_cost > userCredits}
               >
                 <Play className="w-4 h-4 mr-2" />
                 Filter This Video

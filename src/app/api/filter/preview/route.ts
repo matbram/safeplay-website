@@ -1,9 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 
-const ORCHESTRATOR_URL = process.env.ORCHESTRATION_API_URL || "https://safeplay-orchestrator-production.up.railway.app";
-const ORCHESTRATOR_API_KEY = process.env.ORCHESTRATION_API_KEY;
-
 export async function POST(request: Request) {
   try {
     const supabase = await createClient();
@@ -33,16 +30,16 @@ export async function POST(request: Request) {
       );
     }
 
-    // Check if we have cached video metadata
+    // First, check if we have this video cached in our database with a transcript
     const { data: cachedVideo } = await supabase
       .from("videos")
       .select("*")
       .eq("youtube_id", videoId)
       .single();
 
-    if (cachedVideo) {
-      // Calculate credit cost based on duration
-      const creditCost = calculateCreditCost(cachedVideo.duration_seconds);
+    if (cachedVideo && cachedVideo.transcript) {
+      // Video is cached with transcript - free to rewatch
+      const creditCost = 0; // Free for cached videos
 
       return NextResponse.json({
         youtube_id: cachedVideo.youtube_id,
@@ -52,99 +49,48 @@ export async function POST(request: Request) {
         thumbnail_url: cachedVideo.thumbnail_url || `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`,
         credit_cost: creditCost,
         cached: true,
-        has_transcript: !!cachedVideo.transcript,
-      });
-    }
-
-    // Call orchestrator API to get video metadata
-    const headers: Record<string, string> = {
-      "Content-Type": "application/json",
-    };
-
-    if (ORCHESTRATOR_API_KEY) {
-      headers["Authorization"] = `Bearer ${ORCHESTRATOR_API_KEY}`;
-    }
-
-    const response = await fetch(`${ORCHESTRATOR_URL}/api/filter`, {
-      method: "POST",
-      headers,
-      body: JSON.stringify({ youtube_id: videoId }),
-    });
-
-    const data = await response.json();
-
-    if (!response.ok) {
-      return NextResponse.json(
-        { error: data.error || "Failed to fetch video info", error_code: data.error_code },
-        { status: response.status }
-      );
-    }
-
-    // If the video is already cached on the orchestrator, extract metadata
-    if (data.status === "completed" && data.transcript) {
-      const durationSeconds = data.transcript.duration || 300;
-      const creditCost = calculateCreditCost(durationSeconds);
-
-      // Cache the video metadata in our database
-      await supabase.from("videos").upsert({
-        youtube_id: videoId,
-        title: data.video?.title || data.transcript.title || "Unknown Video",
-        channel_name: data.video?.channel_name || null,
-        duration_seconds: durationSeconds,
-        thumbnail_url: `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`,
-        transcript: data.transcript,
-        cached_at: new Date().toISOString(),
-      });
-
-      return NextResponse.json({
-        youtube_id: videoId,
-        title: data.video?.title || data.transcript.title || "Unknown Video",
-        channel_name: data.video?.channel_name || null,
-        duration_seconds: durationSeconds,
-        thumbnail_url: `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`,
-        credit_cost: creditCost,
-        cached: true,
         has_transcript: true,
-        transcript: data.transcript,
       });
     }
 
-    // If processing started, return job info with estimated duration
-    if (data.status === "processing" && data.job_id) {
-      // Save the job to the database so status polling can find it
-      await supabase.from("filter_jobs").upsert({
-        job_id: data.job_id,
-        user_id: user.id,
-        youtube_id: videoId,
-        filter_type: "mute",
-        custom_words: [],
-        status: "processing",
-        created_at: new Date().toISOString(),
-      });
+    // Video not cached - fetch metadata from YouTube oEmbed API
+    let title = "Unknown Video";
+    let channelName = null;
+    let thumbnailUrl = `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`;
 
-      return NextResponse.json({
-        youtube_id: videoId,
-        title: "Loading video info...",
-        channel_name: null,
-        duration_seconds: 0,
-        thumbnail_url: `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`,
-        credit_cost: 0,
-        cached: false,
-        has_transcript: false,
-        job_id: data.job_id,
-        status: "processing",
-      });
+    try {
+      const oembedUrl = `https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${videoId}&format=json`;
+      const oembedResponse = await fetch(oembedUrl);
+
+      if (oembedResponse.ok) {
+        const oembedData = await oembedResponse.json();
+        title = oembedData.title || title;
+        channelName = oembedData.author_name || null;
+        thumbnailUrl = oembedData.thumbnail_url || thumbnailUrl;
+      }
+    } catch (err) {
+      console.error("Failed to fetch oEmbed data:", err);
+      // Continue with default values
     }
 
-    // Handle failed status
-    if (data.status === "failed") {
-      return NextResponse.json(
-        { error: data.error || "Video unavailable", error_code: data.error_code },
-        { status: 400 }
-      );
-    }
+    // For uncached videos, we don't know the exact duration yet
+    // We'll estimate based on average video length or show "TBD"
+    // The actual credit cost will be calculated after processing starts
+    const estimatedDurationSeconds = 0; // Unknown until processing
+    const estimatedCreditCost = 0; // Will be calculated when we know duration
 
-    return NextResponse.json(data);
+    return NextResponse.json({
+      youtube_id: videoId,
+      title: title,
+      channel_name: channelName,
+      duration_seconds: estimatedDurationSeconds,
+      thumbnail_url: thumbnailUrl,
+      credit_cost: estimatedCreditCost,
+      cached: false,
+      has_transcript: false,
+      // Note: actual credit cost will be determined after video is processed
+      credit_cost_note: "Credit cost will be calculated based on video duration (1 credit per minute)",
+    });
   } catch (error) {
     console.error("Filter preview error:", error);
     return NextResponse.json(
@@ -168,10 +114,4 @@ function extractYouTubeId(url: string): string | null {
   }
 
   return null;
-}
-
-function calculateCreditCost(durationSeconds: number): number {
-  // 1 credit per minute of video, minimum 1 credit
-  const minutes = Math.ceil(durationSeconds / 60);
-  return Math.max(1, minutes);
 }

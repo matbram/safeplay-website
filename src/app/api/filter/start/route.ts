@@ -18,7 +18,7 @@ export async function POST(request: Request) {
       );
     }
 
-    const { youtube_id, filter_type, custom_words, sensitivity_level } = await request.json();
+    const { youtube_id, filter_type, custom_words } = await request.json();
 
     if (!youtube_id) {
       return NextResponse.json(
@@ -27,30 +27,17 @@ export async function POST(request: Request) {
       );
     }
 
-    // Check user's credit balance
-    const { data: creditBalance } = await supabase
-      .from("credit_balances")
-      .select("*")
-      .eq("user_id", user.id)
-      .single();
-
-    const availableCredits = creditBalance?.available_credits || 0;
-
-    // Check if video is already cached (free to rewatch)
+    // Check if video is already cached in OUR database (free to rewatch)
     const { data: cachedVideo } = await supabase
       .from("videos")
       .select("*")
       .eq("youtube_id", youtube_id)
       .single();
 
-    let creditCost = 0;
-
     if (cachedVideo && cachedVideo.transcript) {
-      // Video already transcribed - free to rewatch
-      creditCost = 0;
-
-      // Record in filter history
-      const { data: historyEntry } = await supabase
+      // Video already transcribed in our DB - free to rewatch
+      // Record in filter history (no credits charged)
+      const { data: historyEntry, error: historyError } = await supabase
         .from("filter_history")
         .insert({
           user_id: user.id,
@@ -61,6 +48,10 @@ export async function POST(request: Request) {
         })
         .select()
         .single();
+
+      if (historyError) {
+        console.error("Error saving history:", historyError);
+      }
 
       return NextResponse.json({
         status: "completed",
@@ -78,7 +69,7 @@ export async function POST(request: Request) {
       });
     }
 
-    // Call orchestrator to start filtering
+    // Video not in our cache - call orchestrator to start filtering
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
     };
@@ -102,12 +93,20 @@ export async function POST(request: Request) {
       );
     }
 
-    // If already completed on orchestrator (cached there)
+    // If orchestrator has it cached and returns completed immediately
     if (data.status === "completed" && data.transcript) {
-      const durationSeconds = data.transcript.duration || 300;
-      creditCost = calculateCreditCost(durationSeconds);
+      const durationSeconds = data.transcript.duration || 0;
+      const creditCost = calculateCreditCost(durationSeconds);
 
-      // Check credits
+      // Check user's credit balance
+      const { data: creditBalance } = await supabase
+        .from("credit_balances")
+        .select("*")
+        .eq("user_id", user.id)
+        .single();
+
+      const availableCredits = creditBalance?.available_credits || 0;
+
       if (creditCost > availableCredits) {
         return NextResponse.json(
           {
@@ -124,7 +123,7 @@ export async function POST(request: Request) {
       const newBalance = availableCredits - creditCost;
       const newUsed = (creditBalance?.used_this_period || 0) + creditCost;
 
-      await supabase
+      const { error: creditUpdateError } = await supabase
         .from("credit_balances")
         .update({
           available_credits: newBalance,
@@ -132,8 +131,12 @@ export async function POST(request: Request) {
         })
         .eq("user_id", user.id);
 
+      if (creditUpdateError) {
+        console.error("Error updating credits:", creditUpdateError);
+      }
+
       // Record credit transaction
-      await supabase.from("credit_transactions").insert({
+      const { error: txError } = await supabase.from("credit_transactions").insert({
         user_id: user.id,
         amount: -creditCost,
         balance_after: newBalance,
@@ -141,8 +144,12 @@ export async function POST(request: Request) {
         description: `Filtered video: ${data.video?.title || youtube_id}`,
       });
 
+      if (txError) {
+        console.error("Error recording transaction:", txError);
+      }
+
       // Cache video in our database
-      const { data: videoRecord } = await supabase
+      const { data: videoRecord, error: videoError } = await supabase
         .from("videos")
         .upsert({
           youtube_id: youtube_id,
@@ -156,8 +163,12 @@ export async function POST(request: Request) {
         .select()
         .single();
 
+      if (videoError) {
+        console.error("Error caching video:", videoError);
+      }
+
       // Record in filter history
-      const { data: historyEntry } = await supabase
+      const { data: historyEntry, error: historyError } = await supabase
         .from("filter_history")
         .insert({
           user_id: user.id,
@@ -168,6 +179,10 @@ export async function POST(request: Request) {
         })
         .select()
         .single();
+
+      if (historyError) {
+        console.error("Error saving history:", historyError);
+      }
 
       return NextResponse.json({
         status: "completed",
@@ -185,10 +200,9 @@ export async function POST(request: Request) {
       });
     }
 
-    // Processing started - return job ID for polling
+    // Processing started - save job and return job ID for polling
     if (data.status === "processing" && data.job_id) {
-      // Store pending job in database
-      await supabase.from("filter_jobs").upsert({
+      const { error: jobError } = await supabase.from("filter_jobs").upsert({
         job_id: data.job_id,
         user_id: user.id,
         youtube_id: youtube_id,
@@ -197,6 +211,10 @@ export async function POST(request: Request) {
         status: "processing",
         created_at: new Date().toISOString(),
       });
+
+      if (jobError) {
+        console.error("Error saving job:", jobError);
+      }
 
       return NextResponse.json({
         status: "processing",
@@ -225,6 +243,7 @@ export async function POST(request: Request) {
 }
 
 function calculateCreditCost(durationSeconds: number): number {
+  // 1 credit per minute of video, minimum 1 credit
   const minutes = Math.ceil(durationSeconds / 60);
   return Math.max(1, minutes);
 }

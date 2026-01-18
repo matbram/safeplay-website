@@ -37,7 +37,17 @@ export async function GET(
       );
     }
 
-    // Poll orchestrator for status
+    // If job already completed in our DB, return cached result
+    if (jobRecord.status === "completed") {
+      return NextResponse.json({
+        status: "completed",
+        progress: 100,
+        message: "Complete!",
+        credits_used: jobRecord.credits_used || 0,
+      });
+    }
+
+    // Poll orchestrator for current status
     const headers: Record<string, string> = {};
 
     if (ORCHESTRATOR_API_KEY) {
@@ -64,35 +74,48 @@ export async function GET(
       );
     }
 
-    // Map orchestrator progress to UI-friendly progress
+    // Map orchestrator status to UI-friendly progress (matching Chrome extension)
     let displayProgress = data.progress || 0;
     let displayMessage = "";
 
     switch (data.status) {
       case "pending":
         displayProgress = 5;
-        displayMessage = "Queued for processing...";
+        displayMessage = "Preparing video...";
         break;
       case "downloading":
-        displayProgress = 5 + (data.progress || 0) * 0.25; // 5-30%
+        // Map downloading 0-100% to 5-35%
+        displayProgress = 5 + Math.round((data.progress || 0) * 0.30);
         displayMessage = "Downloading video...";
         break;
       case "transcribing":
-        displayProgress = 30 + (data.progress || 0) * 0.55; // 30-85%
-        displayMessage = "Analyzing audio and detecting profanity...";
+        // Map transcribing 0-100% to 35-95%
+        displayProgress = 35 + Math.round((data.progress || 0) * 0.60);
+        displayMessage = "Analyzing audio...";
         break;
       case "completed":
         displayProgress = 100;
-        displayMessage = "Processing complete!";
+        displayMessage = "Complete!";
         break;
       case "failed":
         displayMessage = data.error || "Processing failed";
         break;
+      default:
+        displayMessage = "Processing...";
     }
 
-    // If completed, finalize the job
+    // Update job progress in our DB
+    await supabase
+      .from("filter_jobs")
+      .update({
+        status: data.status,
+        progress: displayProgress,
+      })
+      .eq("job_id", jobId);
+
+    // If completed, finalize the job (deduct credits, save video, save history)
     if (data.status === "completed" && data.transcript) {
-      const durationSeconds = data.transcript.duration || 300;
+      const durationSeconds = data.transcript.duration || 0;
       const creditCost = calculateCreditCost(durationSeconds);
 
       // Check user's credit balance
@@ -104,127 +127,133 @@ export async function GET(
 
       const availableCredits = creditBalance?.available_credits || 0;
 
-      // Check credits (only deduct if not already deducted)
-      if (jobRecord.status !== "completed") {
-        if (creditCost > availableCredits) {
-          // Update job status to failed due to insufficient credits
-          await supabase
-            .from("filter_jobs")
-            .update({ status: "failed", error: "Insufficient credits" })
-            .eq("job_id", jobId);
-
-          return NextResponse.json(
-            {
-              status: "failed",
-              error: "Insufficient credits",
-              error_code: "INSUFFICIENT_CREDITS",
-              required: creditCost,
-              available: availableCredits,
-            },
-            { status: 400 }
-          );
-        }
-
-        // Deduct credits
-        const newBalance = availableCredits - creditCost;
-        const newUsed = (creditBalance?.used_this_period || 0) + creditCost;
-
-        await supabase
-          .from("credit_balances")
-          .update({
-            available_credits: newBalance,
-            used_this_period: newUsed,
-          })
-          .eq("user_id", user.id);
-
-        // Record credit transaction
-        await supabase.from("credit_transactions").insert({
-          user_id: user.id,
-          amount: -creditCost,
-          balance_after: newBalance,
-          type: "filter",
-          description: `Filtered video: ${data.video?.title || jobRecord.youtube_id}`,
-        });
-
-        // Cache video in our database
-        const { data: videoRecord } = await supabase
-          .from("videos")
-          .upsert({
-            youtube_id: jobRecord.youtube_id,
-            title: data.video?.title || data.transcript.title || "Unknown Video",
-            channel_name: data.video?.channel_name || null,
-            duration_seconds: durationSeconds,
-            thumbnail_url: `https://img.youtube.com/vi/${jobRecord.youtube_id}/maxresdefault.jpg`,
-            transcript: data.transcript,
-            cached_at: new Date().toISOString(),
-          })
-          .select()
-          .single();
-
-        // Record in filter history
-        const { data: historyEntry } = await supabase
-          .from("filter_history")
-          .insert({
-            user_id: user.id,
-            video_id: videoRecord?.id,
-            filter_type: jobRecord.filter_type || "mute",
-            custom_words: jobRecord.custom_words || [],
-            credits_used: creditCost,
-          })
-          .select()
-          .single();
-
-        // Update job status to completed
+      // Check credits
+      if (creditCost > availableCredits) {
+        // Update job status to failed due to insufficient credits
         await supabase
           .from("filter_jobs")
-          .update({
-            status: "completed",
-            credits_used: creditCost,
-            completed_at: new Date().toISOString(),
-          })
+          .update({ status: "failed", error: "Insufficient credits" })
           .eq("job_id", jobId);
 
         return NextResponse.json({
-          status: "completed",
-          progress: 100,
-          message: displayMessage,
-          transcript: data.transcript,
-          video: {
-            youtube_id: jobRecord.youtube_id,
-            title: data.video?.title || data.transcript.title || "Unknown Video",
-            channel_name: data.video?.channel_name || null,
-            duration_seconds: durationSeconds,
-            thumbnail_url: `https://img.youtube.com/vi/${jobRecord.youtube_id}/maxresdefault.jpg`,
-          },
-          history_id: historyEntry?.id,
-          credits_used: creditCost,
+          status: "failed",
+          error: "Insufficient credits",
+          error_code: "INSUFFICIENT_CREDITS",
+          required: creditCost,
+          available: availableCredits,
         });
       }
 
-      // Already completed, just return the data
+      // Deduct credits
+      const newBalance = availableCredits - creditCost;
+      const newUsed = (creditBalance?.used_this_period || 0) + creditCost;
+
+      const { error: creditUpdateError } = await supabase
+        .from("credit_balances")
+        .update({
+          available_credits: newBalance,
+          used_this_period: newUsed,
+        })
+        .eq("user_id", user.id);
+
+      if (creditUpdateError) {
+        console.error("Error updating credits:", creditUpdateError);
+      }
+
+      // Record credit transaction
+      const { error: txError } = await supabase.from("credit_transactions").insert({
+        user_id: user.id,
+        amount: -creditCost,
+        balance_after: newBalance,
+        type: "filter",
+        description: `Filtered video: ${data.video?.title || jobRecord.youtube_id}`,
+      });
+
+      if (txError) {
+        console.error("Error recording transaction:", txError);
+      }
+
+      // Cache video in our database
+      const { data: videoRecord, error: videoError } = await supabase
+        .from("videos")
+        .upsert({
+          youtube_id: jobRecord.youtube_id,
+          title: data.video?.title || data.transcript.title || "Unknown Video",
+          channel_name: data.video?.channel_name || null,
+          duration_seconds: durationSeconds,
+          thumbnail_url: `https://img.youtube.com/vi/${jobRecord.youtube_id}/maxresdefault.jpg`,
+          transcript: data.transcript,
+          cached_at: new Date().toISOString(),
+        })
+        .select()
+        .single();
+
+      if (videoError) {
+        console.error("Error caching video:", videoError);
+      }
+
+      // Record in filter history
+      const { data: historyEntry, error: historyError } = await supabase
+        .from("filter_history")
+        .insert({
+          user_id: user.id,
+          video_id: videoRecord?.id,
+          filter_type: jobRecord.filter_type || "mute",
+          custom_words: jobRecord.custom_words || [],
+          credits_used: creditCost,
+        })
+        .select()
+        .single();
+
+      if (historyError) {
+        console.error("Error saving history:", historyError);
+      }
+
+      // Mark job as completed
+      await supabase
+        .from("filter_jobs")
+        .update({
+          status: "completed",
+          credits_used: creditCost,
+          completed_at: new Date().toISOString(),
+        })
+        .eq("job_id", jobId);
+
       return NextResponse.json({
         status: "completed",
         progress: 100,
-        message: displayMessage,
+        message: "Complete!",
         transcript: data.transcript,
-        video: data.video,
-        credits_used: jobRecord.credits_used || 0,
+        video: {
+          youtube_id: jobRecord.youtube_id,
+          title: data.video?.title || data.transcript.title || "Unknown Video",
+          channel_name: data.video?.channel_name || null,
+          duration_seconds: durationSeconds,
+          thumbnail_url: `https://img.youtube.com/vi/${jobRecord.youtube_id}/maxresdefault.jpg`,
+        },
+        history_id: historyEntry?.id,
+        credits_used: creditCost,
       });
     }
 
-    // Update job status
-    await supabase
-      .from("filter_jobs")
-      .update({
-        status: data.status,
-        progress: displayProgress,
-      })
-      .eq("job_id", jobId);
+    // Handle failed status from orchestrator
+    if (data.status === "failed") {
+      await supabase
+        .from("filter_jobs")
+        .update({ status: "failed", error: data.error })
+        .eq("job_id", jobId);
 
-    // Return status update
+      return NextResponse.json({
+        status: "failed",
+        error: data.error || "Processing failed",
+        error_code: data.error_code,
+      });
+    }
+
+    // Return current status
     return NextResponse.json({
       status: data.status,
-      progress: Math.round(displayProgress),
+      progress: displayProgress,
       message: displayMessage,
       video: data.video,
     });
@@ -238,6 +267,7 @@ export async function GET(
 }
 
 function calculateCreditCost(durationSeconds: number): number {
+  // 1 credit per minute of video, minimum 1 credit
   const minutes = Math.ceil(durationSeconds / 60);
   return Math.max(1, minutes);
 }
