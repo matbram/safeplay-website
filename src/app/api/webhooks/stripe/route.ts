@@ -1,6 +1,6 @@
 import { headers } from "next/headers";
 import { NextResponse } from "next/server";
-import { stripe, getPlanByPriceId } from "@/lib/stripe/server";
+import { stripe, getPlanByPriceId, getCreditPackById } from "@/lib/stripe/server";
 import { createClient } from "@/lib/supabase/server";
 import Stripe from "stripe";
 
@@ -55,6 +55,68 @@ export async function POST(request: Request) {
         const session = event.data.object as Stripe.Checkout.Session;
         const userId = session.metadata?.user_id;
         const customerId = session.customer as string;
+        const sessionType = session.metadata?.type;
+
+        // Handle credit pack purchase (one-time payment)
+        if (sessionType === "credit_pack") {
+          const packId = session.metadata?.pack_id;
+          const creditsToAdd = parseInt(session.metadata?.credits || "0", 10);
+
+          if (userId && packId && creditsToAdd > 0) {
+            const pack = getCreditPackById(packId);
+
+            if (pack) {
+              // Get current credit balance
+              const { data: currentBalance } = await supabase
+                .from("credit_balances")
+                .select("*")
+                .eq("user_id", userId)
+                .single();
+
+              const currentCredits = currentBalance?.available_credits || 0;
+              const currentTopup = currentBalance?.topup_credits || 0;
+              const newTopupCredits = currentTopup + creditsToAdd;
+              const newTotalCredits = currentCredits + creditsToAdd;
+
+              // Add credit transaction
+              await supabase.from("credit_transactions").insert({
+                user_id: userId,
+                amount: creditsToAdd,
+                balance_after: newTotalCredits,
+                type: "topup",
+                description: `Purchased ${pack.name} credit pack`,
+              });
+
+              // Update credit balance
+              await supabase
+                .from("credit_balances")
+                .update({
+                  available_credits: newTotalCredits,
+                  topup_credits: newTopupCredits,
+                })
+                .eq("user_id", userId);
+
+              // Store invoice record for the purchase
+              const sessionDetails = session as unknown as {
+                amount_total: number;
+                invoice: string | null;
+              };
+
+              await supabase.from("invoices").insert({
+                user_id: userId,
+                stripe_invoice_id: session.id, // Use session ID for one-time payments
+                amount_cents: sessionDetails.amount_total,
+                status: "paid",
+                invoice_pdf_url: null,
+                period_start: new Date().toISOString(),
+                period_end: null,
+              });
+            }
+          }
+          break;
+        }
+
+        // Handle subscription checkout
         const subscriptionId = session.subscription as string;
 
         if (userId && subscriptionId) {

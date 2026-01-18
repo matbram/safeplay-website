@@ -28,6 +28,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
+import { UserProvider, useUser } from "@/contexts/user-context";
 
 const navigation = [
   { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
@@ -38,19 +39,23 @@ const navigation = [
   { name: "Settings", href: "/settings", icon: Settings },
 ];
 
-export default function DashboardLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+const planNames: Record<string, string> = {
+  free: "Free",
+  individual: "Individual",
+  family: "Family",
+  organization: "Organization",
+};
+
+function DashboardContent({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const { user: userData, loading, signOut } = useUser();
 
-  // Mock user data - replace with actual auth
+  // User display data from context
   const user = {
-    name: "John Doe",
-    email: "john@example.com",
-    plan: "Individual",
+    name: userData?.display_name || userData?.email?.split("@")[0] || "User",
+    email: userData?.email || "",
+    plan: planNames[userData?.subscription_tier || "free"] || "Free",
     avatar: null,
   };
 
@@ -196,7 +201,7 @@ export default function DashboardLayout({
                   </Link>
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem className="text-error">
+                <DropdownMenuItem className="text-error" onClick={signOut}>
                   <LogOut className="w-4 h-4 mr-2" />
                   Sign out
                 </DropdownMenuItem>
@@ -209,5 +214,17 @@ export default function DashboardLayout({
         <main className="p-4 lg:p-8">{children}</main>
       </div>
     </div>
+  );
+}
+
+export default function DashboardLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  return (
+    <UserProvider>
+      <DashboardContent>{children}</DashboardContent>
+    </UserProvider>
   );
 }
