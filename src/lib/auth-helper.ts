@@ -85,17 +85,18 @@ async function authenticateWithToken(token: string): Promise<AuthResult> {
       return { user: null, error: "Token expired", supabase: null };
     }
 
-    // Create a client with the token for RLS-protected queries
-    // RLS will verify the token signature when queries are made
-    const supabase = createBrowserClient(supabaseUrl, supabaseAnonKey, {
-      global: {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      },
+    // Create a client and set the session properly for RLS
+    const supabase = createBrowserClient(supabaseUrl, supabaseAnonKey);
+
+    // Set the session with the access token - this properly authenticates for RLS
+    // We need both access_token and refresh_token, but refresh_token can be empty
+    // since we're not using it server-side
+    await supabase.auth.setSession({
+      access_token: token,
+      refresh_token: '', // Not needed for server-side RLS queries
     });
 
-    console.log("Auth: Token decoded successfully for user:", payload.sub);
+    console.log("Auth: Token decoded and session set for user:", payload.sub);
 
     return {
       user: {
