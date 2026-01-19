@@ -1,6 +1,25 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 
+// Parse ISO 8601 duration format (e.g., "PT4M13S", "PT1H2M30S")
+function parseISO8601Duration(duration: string): number {
+  const match = duration.match(/PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/);
+  if (!match) return 0;
+
+  const hours = parseInt(match[1] || "0", 10);
+  const minutes = parseInt(match[2] || "0", 10);
+  const seconds = parseInt(match[3] || "0", 10);
+
+  return hours * 3600 + minutes * 60 + seconds;
+}
+
+// Calculate credit cost: 1 credit per minute, minimum 1 credit
+function calculateCreditCost(durationSeconds: number): number {
+  if (durationSeconds === 0) return 0;
+  const minutes = Math.ceil(durationSeconds / 60);
+  return Math.max(1, minutes);
+}
+
 export async function POST(request: Request) {
   try {
     const supabase = await createClient();
@@ -39,57 +58,94 @@ export async function POST(request: Request) {
 
     if (cachedVideo && cachedVideo.transcript) {
       // Video is cached with transcript - free to rewatch
-      const creditCost = 0; // Free for cached videos
-
       return NextResponse.json({
         youtube_id: cachedVideo.youtube_id,
         title: cachedVideo.title,
         channel_name: cachedVideo.channel_name,
         duration_seconds: cachedVideo.duration_seconds,
         thumbnail_url: cachedVideo.thumbnail_url || `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`,
-        credit_cost: creditCost,
+        credit_cost: 0, // Free for cached videos
         cached: true,
         has_transcript: true,
       });
     }
 
-    // Video not cached - fetch metadata from YouTube oEmbed API
+    // Video not cached - fetch metadata from YouTube Data API v3 (includes duration)
     let title = "Unknown Video";
     let channelName = null;
+    let durationSeconds = 0;
     let thumbnailUrl = `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`;
 
-    try {
-      const oembedUrl = `https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${videoId}&format=json`;
-      const oembedResponse = await fetch(oembedUrl);
+    const youtubeApiKey = process.env.YOUTUBE_API_KEY;
 
-      if (oembedResponse.ok) {
-        const oembedData = await oembedResponse.json();
-        title = oembedData.title || title;
-        channelName = oembedData.author_name || null;
-        thumbnailUrl = oembedData.thumbnail_url || thumbnailUrl;
+    if (youtubeApiKey) {
+      // Use YouTube Data API v3 for full metadata including duration
+      try {
+        const apiUrl = `https://www.googleapis.com/youtube/v3/videos?id=${videoId}&part=snippet,contentDetails&key=${youtubeApiKey}`;
+        const apiResponse = await fetch(apiUrl);
+
+        if (apiResponse.ok) {
+          const apiData = await apiResponse.json();
+
+          if (apiData.items && apiData.items.length > 0) {
+            const video = apiData.items[0];
+            title = video.snippet?.title || title;
+            channelName = video.snippet?.channelTitle || null;
+            thumbnailUrl = video.snippet?.thumbnails?.maxres?.url
+              || video.snippet?.thumbnails?.high?.url
+              || video.snippet?.thumbnails?.medium?.url
+              || thumbnailUrl;
+
+            // Parse ISO 8601 duration (e.g., "PT4M13S")
+            if (video.contentDetails?.duration) {
+              durationSeconds = parseISO8601Duration(video.contentDetails.duration);
+            }
+          }
+        }
+      } catch (err) {
+        console.error("Failed to fetch YouTube Data API:", err);
+        // Fall back to oEmbed
       }
-    } catch (err) {
-      console.error("Failed to fetch oEmbed data:", err);
-      // Continue with default values
     }
 
-    // For uncached videos, we don't know the exact duration yet
-    // We'll estimate based on average video length or show "TBD"
-    // The actual credit cost will be calculated after processing starts
-    const estimatedDurationSeconds = 0; // Unknown until processing
-    const estimatedCreditCost = 0; // Will be calculated when we know duration
+    // Fallback to oEmbed if YouTube Data API not available or failed
+    if (durationSeconds === 0 || title === "Unknown Video") {
+      try {
+        const oembedUrl = `https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${videoId}&format=json`;
+        const oembedResponse = await fetch(oembedUrl);
+
+        if (oembedResponse.ok) {
+          const oembedData = await oembedResponse.json();
+          if (title === "Unknown Video") {
+            title = oembedData.title || title;
+          }
+          if (!channelName) {
+            channelName = oembedData.author_name || null;
+          }
+          if (thumbnailUrl.includes("maxresdefault")) {
+            thumbnailUrl = oembedData.thumbnail_url || thumbnailUrl;
+          }
+        }
+      } catch (err) {
+        console.error("Failed to fetch oEmbed data:", err);
+      }
+    }
+
+    const creditCost = calculateCreditCost(durationSeconds);
 
     return NextResponse.json({
       youtube_id: videoId,
       title: title,
       channel_name: channelName,
-      duration_seconds: estimatedDurationSeconds,
+      duration_seconds: durationSeconds,
       thumbnail_url: thumbnailUrl,
-      credit_cost: estimatedCreditCost,
+      credit_cost: creditCost,
       cached: false,
       has_transcript: false,
-      // Note: actual credit cost will be determined after video is processed
-      credit_cost_note: "Credit cost will be calculated based on video duration (1 credit per minute)",
+      // If duration is still 0, we couldn't get it
+      ...(durationSeconds === 0 && {
+        credit_cost_note: "Duration unavailable. Cost will be ~1 credit per minute.",
+      }),
     });
   } catch (error) {
     console.error("Filter preview error:", error);
