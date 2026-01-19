@@ -1,24 +1,26 @@
 import { createClient } from "@/lib/supabase/server";
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
+import { authenticateRequest } from "@/lib/auth-helper";
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
-    const supabase = await createClient();
+    // Authenticate via session cookie or bearer token
+    const auth = await authenticateRequest(request);
 
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-
-    if (authError || !user) {
+    if (!auth.user) {
       return NextResponse.json(
-        { error: "Unauthorized" },
+        { error: auth.error || "Unauthorized" },
         { status: 401 }
       );
     }
+
+    const supabase = await createClient();
 
     // Get user profile
     const { data: profile, error: profileError } = await supabase
       .from("profiles")
       .select("*")
-      .eq("id", user.id)
+      .eq("id", auth.user.id)
       .single();
 
     if (profileError) {
@@ -32,20 +34,20 @@ export async function GET() {
     const { data: subscription } = await supabase
       .from("subscriptions")
       .select("*, plans(*)")
-      .eq("user_id", user.id)
+      .eq("user_id", auth.user.id)
       .single();
 
     // Get credit balance
     const { data: credits } = await supabase
       .from("credit_balances")
       .select("*")
-      .eq("user_id", user.id)
+      .eq("user_id", auth.user.id)
       .single();
 
     return NextResponse.json({
       user: {
-        id: user.id,
-        email: user.email,
+        id: auth.user.id,
+        email: auth.user.email,
         ...profile,
       },
       subscription,
@@ -60,19 +62,19 @@ export async function GET() {
   }
 }
 
-export async function PATCH(request: Request) {
+export async function PATCH(request: NextRequest) {
   try {
-    const supabase = await createClient();
+    // Authenticate via session cookie or bearer token
+    const auth = await authenticateRequest(request);
 
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-
-    if (authError || !user) {
+    if (!auth.user) {
       return NextResponse.json(
-        { error: "Unauthorized" },
+        { error: auth.error || "Unauthorized" },
         { status: 401 }
       );
     }
 
+    const supabase = await createClient();
     const updates = await request.json();
 
     // Only allow updating certain fields
@@ -89,7 +91,7 @@ export async function PATCH(request: Request) {
     const { data, error } = await supabase
       .from("profiles")
       .update(filteredUpdates)
-      .eq("id", user.id)
+      .eq("id", auth.user.id)
       .select()
       .single();
 
