@@ -4,6 +4,87 @@ import { authenticateRequest } from "@/lib/auth-helper";
 const ORCHESTRATOR_URL = process.env.ORCHESTRATION_API_URL || "https://safeplay-orchestrator-production.up.railway.app";
 const ORCHESTRATOR_API_KEY = process.env.ORCHESTRATION_API_KEY;
 
+// Extract JSON object from string starting at given position
+function extractJsonObject(str: string, startIndex: number): string | null {
+  let braceCount = 0;
+  let inString = false;
+  let escapeNext = false;
+
+  for (let i = startIndex; i < str.length; i++) {
+    const char = str[i];
+
+    if (escapeNext) {
+      escapeNext = false;
+      continue;
+    }
+
+    if (char === "\\") {
+      escapeNext = true;
+      continue;
+    }
+
+    if (char === '"' && !escapeNext) {
+      inString = !inString;
+      continue;
+    }
+
+    if (!inString) {
+      if (char === "{") {
+        braceCount++;
+      } else if (char === "}") {
+        braceCount--;
+        if (braceCount === 0) {
+          return str.substring(startIndex, i + 1);
+        }
+      }
+    }
+  }
+
+  return null;
+}
+
+// Scrape YouTube page to get video duration
+async function scrapeYouTubeMetadata(videoId: string): Promise<{ durationSeconds: number } | null> {
+  try {
+    const response = await fetch(`https://www.youtube.com/watch?v=${videoId}`, {
+      headers: {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Accept-Language": "en-US,en;q=0.9",
+      },
+    });
+
+    if (!response.ok) return null;
+
+    const html = await response.text();
+    const playerResponseMarker = "var ytInitialPlayerResponse = ";
+    const playerResponseStart = html.indexOf(playerResponseMarker);
+
+    if (playerResponseStart !== -1) {
+      const jsonStart = playerResponseStart + playerResponseMarker.length;
+      const jsonString = extractJsonObject(html, jsonStart);
+
+      if (jsonString) {
+        try {
+          const playerData = JSON.parse(jsonString);
+          const videoDetails = playerData.videoDetails;
+
+          if (videoDetails?.lengthSeconds) {
+            return {
+              durationSeconds: parseInt(videoDetails.lengthSeconds, 10),
+            };
+          }
+        } catch {
+          // JSON parse failed
+        }
+      }
+    }
+
+    return null;
+  } catch {
+    return null;
+  }
+}
+
 export async function POST(request: NextRequest) {
   try {
     // Authenticate via session cookie or bearer token
@@ -94,8 +175,35 @@ export async function POST(request: NextRequest) {
 
     // If orchestrator has it cached and returns completed immediately
     if (data.status === "completed" && data.transcript) {
-      const durationSeconds = data.transcript.duration || 0;
+      // Get duration - try multiple sources since transcript.duration is often missing
+      let durationSeconds = data.transcript.duration || 0;
+
+      // If duration is 0, try to get it from existing video cache
+      if (durationSeconds === 0) {
+        const { data: existingVideo } = await supabase
+          .from("videos")
+          .select("duration_seconds")
+          .eq("youtube_id", youtube_id)
+          .single();
+
+        if (existingVideo?.duration_seconds) {
+          durationSeconds = existingVideo.duration_seconds;
+          console.log("Start: Got duration from cached video:", durationSeconds);
+        }
+      }
+
+      // If still 0, try scraping YouTube
+      if (durationSeconds === 0) {
+        console.log("Start: Duration still 0, scraping YouTube for:", youtube_id);
+        const scrapedData = await scrapeYouTubeMetadata(youtube_id);
+        if (scrapedData?.durationSeconds) {
+          durationSeconds = scrapedData.durationSeconds;
+          console.log("Start: Scraped duration:", durationSeconds);
+        }
+      }
+
       const creditCost = calculateCreditCost(durationSeconds);
+      console.log("Start: Calculated credit cost:", creditCost, "for duration:", durationSeconds);
 
       // Check user's credit balance
       const { data: creditBalance } = await supabase
