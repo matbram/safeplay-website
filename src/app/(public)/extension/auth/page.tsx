@@ -27,6 +27,28 @@ export default function ExtensionAuthPage() {
   useEffect(() => {
     async function sendAuthToExtension() {
       const supabase = createClient();
+
+      // Wait a moment for auth state to settle after redirect
+      await new Promise(resolve => setTimeout(resolve, 500));
+
+      // Get fresh session - use getUser() to validate with server
+      const { data: { user }, error: userError } = await supabase.auth.getUser();
+
+      if (userError || !user) {
+        console.error('Extension auth: No valid user session', userError);
+        const params = new URLSearchParams(window.location.search);
+        const extensionId = params.get('extension') || params.get('extensionId') || '';
+
+        if (extensionId) {
+          window.location.href = `/login?extension=${extensionId}&callback=extension`;
+        } else {
+          setStatus('no-session');
+          setMessage('Please sign in first, then try connecting your extension again.');
+        }
+        return;
+      }
+
+      // Now get the session which should have the tokens
       const { data: { session } } = await supabase.auth.getSession();
 
       const params = new URLSearchParams(window.location.search);
@@ -44,6 +66,15 @@ export default function ExtensionAuthPage() {
         }
         return;
       }
+
+      // Log token info for debugging
+      const tokenExpiry = session.expires_at ? new Date(session.expires_at * 1000) : null;
+      console.log('Extension auth: Session found', {
+        userId: session.user.id,
+        expiresAt: tokenExpiry?.toISOString(),
+        tokenLength: session.access_token?.length,
+        hasRefreshToken: !!session.refresh_token,
+      });
 
       if (!extensionId) {
         setStatus('error');
