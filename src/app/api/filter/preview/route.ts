@@ -1,23 +1,143 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 
-// Parse ISO 8601 duration format (e.g., "PT4M13S", "PT1H2M30S")
-function parseISO8601Duration(duration: string): number {
-  const match = duration.match(/PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/);
-  if (!match) return 0;
-
-  const hours = parseInt(match[1] || "0", 10);
-  const minutes = parseInt(match[2] || "0", 10);
-  const seconds = parseInt(match[3] || "0", 10);
-
-  return hours * 3600 + minutes * 60 + seconds;
-}
-
 // Calculate credit cost: 1 credit per minute, minimum 1 credit
 function calculateCreditCost(durationSeconds: number): number {
   if (durationSeconds === 0) return 0;
   const minutes = Math.ceil(durationSeconds / 60);
   return Math.max(1, minutes);
+}
+
+// Extract JSON object from string starting at given position
+function extractJsonObject(str: string, startIndex: number): string | null {
+  let braceCount = 0;
+  let inString = false;
+  let escapeNext = false;
+
+  for (let i = startIndex; i < str.length; i++) {
+    const char = str[i];
+
+    if (escapeNext) {
+      escapeNext = false;
+      continue;
+    }
+
+    if (char === "\\") {
+      escapeNext = true;
+      continue;
+    }
+
+    if (char === '"' && !escapeNext) {
+      inString = !inString;
+      continue;
+    }
+
+    if (!inString) {
+      if (char === "{") {
+        braceCount++;
+      } else if (char === "}") {
+        braceCount--;
+        if (braceCount === 0) {
+          return str.substring(startIndex, i + 1);
+        }
+      }
+    }
+  }
+
+  return null;
+}
+
+// Scrape YouTube page to extract video metadata from ytInitialPlayerResponse
+async function scrapeYouTubeMetadata(videoId: string): Promise<{
+  title: string;
+  channelName: string | null;
+  durationSeconds: number;
+  thumbnailUrl: string;
+} | null> {
+  try {
+    const response = await fetch(`https://www.youtube.com/watch?v=${videoId}`, {
+      headers: {
+        // Use a browser-like user agent
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Accept-Language": "en-US,en;q=0.9",
+      },
+    });
+
+    if (!response.ok) {
+      console.error("Failed to fetch YouTube page:", response.status);
+      return null;
+    }
+
+    const html = await response.text();
+
+    // Find ytInitialPlayerResponse and extract the JSON object
+    const playerResponseMarker = "var ytInitialPlayerResponse = ";
+    const playerResponseStart = html.indexOf(playerResponseMarker);
+
+    if (playerResponseStart !== -1) {
+      const jsonStart = playerResponseStart + playerResponseMarker.length;
+      const jsonString = extractJsonObject(html, jsonStart);
+
+      if (jsonString) {
+        try {
+          const playerData = JSON.parse(jsonString);
+          const videoDetails = playerData.videoDetails;
+
+          if (videoDetails) {
+            return {
+              title: videoDetails.title || "Unknown Video",
+              channelName: videoDetails.author || null,
+              durationSeconds: parseInt(videoDetails.lengthSeconds || "0", 10),
+              thumbnailUrl:
+                videoDetails.thumbnail?.thumbnails?.slice(-1)[0]?.url ||
+                `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`,
+            };
+          }
+        } catch (parseError) {
+          console.error("Failed to parse ytInitialPlayerResponse:", parseError);
+        }
+      }
+    }
+
+    // Fallback: try ytInitialData
+    const initialDataMarker = "var ytInitialData = ";
+    const initialDataStart = html.indexOf(initialDataMarker);
+
+    if (initialDataStart !== -1) {
+      const jsonStart = initialDataStart + initialDataMarker.length;
+      const jsonString = extractJsonObject(html, jsonStart);
+
+      if (jsonString) {
+        try {
+          const initialData = JSON.parse(jsonString);
+          // Navigate to video primary info
+          const contents = initialData.contents?.twoColumnWatchNextResults?.results?.results?.contents;
+          if (contents) {
+            for (const content of contents) {
+              const primaryInfo = content.videoPrimaryInfoRenderer;
+              const secondaryInfo = content.videoSecondaryInfoRenderer;
+
+              if (primaryInfo?.title?.runs?.[0]?.text) {
+                return {
+                  title: primaryInfo.title.runs[0].text,
+                  channelName: secondaryInfo?.owner?.videoOwnerRenderer?.title?.runs?.[0]?.text || null,
+                  durationSeconds: 0, // Not available in this structure
+                  thumbnailUrl: `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`,
+                };
+              }
+            }
+          }
+        } catch (parseError) {
+          console.error("Failed to parse ytInitialData:", parseError);
+        }
+      }
+    }
+
+    return null;
+  } catch (error) {
+    console.error("Error scraping YouTube:", error);
+    return null;
+  }
 }
 
 export async function POST(request: Request) {
@@ -70,61 +190,31 @@ export async function POST(request: Request) {
       });
     }
 
-    // Video not cached - fetch metadata from YouTube Data API v3 (includes duration)
+    // Video not cached - scrape metadata from YouTube page
     let title = "Unknown Video";
-    let channelName = null;
+    let channelName: string | null = null;
     let durationSeconds = 0;
     let thumbnailUrl = `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`;
 
-    const youtubeApiKey = process.env.YOUTUBE_API_KEY;
+    // Scrape YouTube page for metadata including duration
+    const scrapedData = await scrapeYouTubeMetadata(videoId);
 
-    if (youtubeApiKey) {
-      // Use YouTube Data API v3 for full metadata including duration
-      try {
-        const apiUrl = `https://www.googleapis.com/youtube/v3/videos?id=${videoId}&part=snippet,contentDetails&key=${youtubeApiKey}`;
-        const apiResponse = await fetch(apiUrl);
-
-        if (apiResponse.ok) {
-          const apiData = await apiResponse.json();
-
-          if (apiData.items && apiData.items.length > 0) {
-            const video = apiData.items[0];
-            title = video.snippet?.title || title;
-            channelName = video.snippet?.channelTitle || null;
-            thumbnailUrl = video.snippet?.thumbnails?.maxres?.url
-              || video.snippet?.thumbnails?.high?.url
-              || video.snippet?.thumbnails?.medium?.url
-              || thumbnailUrl;
-
-            // Parse ISO 8601 duration (e.g., "PT4M13S")
-            if (video.contentDetails?.duration) {
-              durationSeconds = parseISO8601Duration(video.contentDetails.duration);
-            }
-          }
-        }
-      } catch (err) {
-        console.error("Failed to fetch YouTube Data API:", err);
-        // Fall back to oEmbed
-      }
-    }
-
-    // Fallback to oEmbed if YouTube Data API not available or failed
-    if (durationSeconds === 0 || title === "Unknown Video") {
+    if (scrapedData) {
+      title = scrapedData.title;
+      channelName = scrapedData.channelName;
+      durationSeconds = scrapedData.durationSeconds;
+      thumbnailUrl = scrapedData.thumbnailUrl;
+    } else {
+      // Fallback to oEmbed (doesn't have duration but at least gets title)
       try {
         const oembedUrl = `https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${videoId}&format=json`;
         const oembedResponse = await fetch(oembedUrl);
 
         if (oembedResponse.ok) {
           const oembedData = await oembedResponse.json();
-          if (title === "Unknown Video") {
-            title = oembedData.title || title;
-          }
-          if (!channelName) {
-            channelName = oembedData.author_name || null;
-          }
-          if (thumbnailUrl.includes("maxresdefault")) {
-            thumbnailUrl = oembedData.thumbnail_url || thumbnailUrl;
-          }
+          title = oembedData.title || title;
+          channelName = oembedData.author_name || null;
+          thumbnailUrl = oembedData.thumbnail_url || thumbnailUrl;
         }
       } catch (err) {
         console.error("Failed to fetch oEmbed data:", err);
