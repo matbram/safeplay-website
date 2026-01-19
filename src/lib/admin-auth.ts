@@ -1,4 +1,4 @@
-import { createClient } from "@/lib/supabase/server";
+import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { NextRequest, NextResponse } from "next/server";
 
 export type AdminRole = "super_admin" | "admin" | "support";
@@ -80,8 +80,11 @@ export async function authenticateAdmin(
       return { admin: null, error: "Not authenticated" };
     }
 
+    // Use service role client to bypass RLS for admin_roles table
+    const serviceClient = createServiceClient();
+
     // Check if user has admin role
-    const { data: adminRole, error: roleError } = await supabase
+    const { data: adminRole, error: roleError } = await serviceClient
       .from("admin_roles")
       .select("*")
       .eq("user_id", user.id)
@@ -174,14 +177,15 @@ export async function logAdminAction(
   request?: NextRequest
 ): Promise<void> {
   try {
-    const supabase = await createClient();
+    // Use service role client to bypass RLS for admin_audit_log table
+    const serviceClient = createServiceClient();
 
     const ipAddress = request?.headers.get("x-forwarded-for") ||
                       request?.headers.get("x-real-ip") ||
                       "unknown";
     const userAgent = request?.headers.get("user-agent") || "unknown";
 
-    await supabase.from("admin_audit_log").insert({
+    await serviceClient.from("admin_audit_log").insert({
       admin_id: adminId,
       action,
       target_type: targetType,

@@ -1,4 +1,4 @@
-import { createClient } from "@/lib/supabase/server";
+import { createServiceClient } from "@/lib/supabase/server";
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdmin, logAdminAction, AdminActions } from "@/lib/admin-auth";
 
@@ -22,7 +22,7 @@ export async function POST(
       );
     }
 
-    const supabase = await createClient();
+    const supabase = createServiceClient();
 
     // Verify ticket exists
     const { data: ticket, error: ticketError } = await supabase

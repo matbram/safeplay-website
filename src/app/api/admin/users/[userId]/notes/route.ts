@@ -1,4 +1,4 @@
-import { createClient } from "@/lib/supabase/server";
+import { createServiceClient } from "@/lib/supabase/server";
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdmin, logAdminAction, AdminActions } from "@/lib/admin-auth";
 
@@ -11,7 +11,7 @@ export async function GET(
     if (!admin) return response;
 
     const { userId } = await params;
-    const supabase = await createClient();
+    const supabase = createServiceClient();
 
     const { data: notes, error } = await supabase
       .from("admin_notes")
@@ -67,7 +67,7 @@ export async function POST(
       );
     }
 
-    const supabase = await createClient();
+    const supabase = createServiceClient();
 
     // Verify user exists
     const { data: user, error: userError } = await supabase

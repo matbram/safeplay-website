@@ -1,4 +1,4 @@
-import { createClient } from "@/lib/supabase/server";
+import { createServiceClient } from "@/lib/supabase/server";
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdmin, logAdminAction, AdminActions } from "@/lib/admin-auth";
 
@@ -11,7 +11,7 @@ export async function GET(
     if (!admin) return response;
 
     const { userId } = await params;
-    const supabase = await createClient();
+    const supabase = createServiceClient();
 
     // Get full user details
     const [
@@ -139,7 +139,7 @@ export async function PATCH(
 
     const { userId } = await params;
     const body = await request.json();
-    const supabase = await createClient();
+    const supabase = createServiceClient();
 
     // Only allow updating certain fields
     const allowedFields = ["full_name"];

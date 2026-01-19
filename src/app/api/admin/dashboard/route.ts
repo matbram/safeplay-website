@@ -1,4 +1,4 @@
-import { createClient } from "@/lib/supabase/server";
+import { createServiceClient } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/admin-auth";
 
@@ -7,7 +7,7 @@ export async function GET() {
     const { admin, response } = await requireAdmin();
     if (!admin) return response;
 
-    const supabase = await createClient();
+    const supabase = createServiceClient();
 
     // Get dashboard stats
     const [

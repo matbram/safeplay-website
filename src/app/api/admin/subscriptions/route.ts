@@ -1,4 +1,4 @@
-import { createClient } from "@/lib/supabase/server";
+import { createServiceClient } from "@/lib/supabase/server";
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/admin-auth";
 
@@ -7,7 +7,7 @@ export async function GET(request: NextRequest) {
     const { admin, response } = await requireAdmin(request, "manage_subscriptions");
     if (!admin) return response;
 
-    const supabase = await createClient();
+    const supabase = createServiceClient();
 
     // Get all subscriptions with user and plan details
     const { data: subscriptions, error } = await supabase

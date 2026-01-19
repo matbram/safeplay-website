@@ -1,4 +1,4 @@
-import { createClient } from "@/lib/supabase/server";
+import { createServiceClient } from "@/lib/supabase/server";
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdmin, logAdminAction, AdminActions } from "@/lib/admin-auth";
 
@@ -39,7 +39,7 @@ export async function PATCH(
       );
     }
 
-    const supabase = await createClient();
+    const supabase = createServiceClient();
 
     const { data, error } = await supabase
       .from("admin_roles")
@@ -104,7 +104,7 @@ export async function DELETE(
       );
     }
 
-    const supabase = await createClient();
+    const supabase = createServiceClient();
 
     // Get admin info for logging
     const { data: targetAdmin } = await supabase

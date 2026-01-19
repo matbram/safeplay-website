@@ -1,4 +1,4 @@
-import { createClient } from "@/lib/supabase/server";
+import { createServiceClient } from "@/lib/supabase/server";
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdmin, logAdminAction, AdminActions } from "@/lib/admin-auth";
 
@@ -11,7 +11,7 @@ export async function GET(
     if (!admin) return response;
 
     const { ticketId } = await params;
-    const supabase = await createClient();
+    const supabase = createServiceClient();
 
     // Get ticket with messages
     const [ticketResult, messagesResult] = await Promise.all([
@@ -126,7 +126,7 @@ export async function PATCH(
 
     updates.updated_at = new Date().toISOString();
 
-    const supabase = await createClient();
+    const supabase = createServiceClient();
 
     const { data, error } = await supabase
       .from("support_tickets")
