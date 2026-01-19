@@ -15,14 +15,15 @@ export async function GET(request: NextRequest) {
 
     const supabase = auth.supabase;
 
-    // Get user profile
+    // Get user profile - use maybeSingle() to handle missing profile
     const { data: profile, error: profileError } = await supabase
       .from("profiles")
       .select("*")
       .eq("id", auth.user.id)
-      .single();
+      .maybeSingle();
 
     if (profileError) {
+      console.error("Profile fetch error:", profileError);
       return NextResponse.json(
         { error: "Failed to fetch profile" },
         { status: 500 }
@@ -34,23 +35,23 @@ export async function GET(request: NextRequest) {
       .from("subscriptions")
       .select("*, plans(*)")
       .eq("user_id", auth.user.id)
-      .single();
+      .maybeSingle();
 
     // Get credit balance
     const { data: credits } = await supabase
       .from("credit_balances")
       .select("*")
       .eq("user_id", auth.user.id)
-      .single();
+      .maybeSingle();
 
     return NextResponse.json({
       user: {
         id: auth.user.id,
         email: auth.user.email,
-        ...profile,
+        ...(profile || {}),
       },
-      subscription,
-      credits,
+      subscription: subscription || null,
+      credits: credits || null,
     });
   } catch (error) {
     console.error("Profile fetch error:", error);
