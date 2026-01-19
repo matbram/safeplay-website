@@ -1,33 +1,35 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { authenticateRequest } from "@/lib/auth-helper";
 
 const ORCHESTRATOR_URL = process.env.ORCHESTRATION_API_URL || "https://safeplay-orchestrator-production.up.railway.app";
 const ORCHESTRATOR_API_KEY = process.env.ORCHESTRATION_API_KEY;
 
 export async function GET(
-  request: Request,
+  request: NextRequest,
   { params }: { params: Promise<{ jobId: string }> }
 ) {
   try {
     const { jobId } = await params;
-    const supabase = await createClient();
 
-    // Get authenticated user
-    const { data: { user }, error: userError } = await supabase.auth.getUser();
+    // Authenticate via session cookie or bearer token
+    const auth = await authenticateRequest(request);
 
-    if (userError || !user) {
+    if (!auth.user) {
       return NextResponse.json(
-        { error: "Unauthorized" },
+        { error: auth.error || "Unauthorized" },
         { status: 401 }
       );
     }
+
+    const supabase = await createClient();
 
     // Check if this job belongs to the user
     const { data: jobRecord } = await supabase
       .from("filter_jobs")
       .select("*")
       .eq("job_id", jobId)
-      .eq("user_id", user.id)
+      .eq("user_id", auth.user.id)
       .single();
 
     if (!jobRecord) {
@@ -122,7 +124,7 @@ export async function GET(
       const { data: creditBalance } = await supabase
         .from("credit_balances")
         .select("*")
-        .eq("user_id", user.id)
+        .eq("user_id", auth.user.id)
         .single();
 
       const availableCredits = creditBalance?.available_credits || 0;
@@ -154,7 +156,7 @@ export async function GET(
           available_credits: newBalance,
           used_this_period: newUsed,
         })
-        .eq("user_id", user.id);
+        .eq("user_id", auth.user.id);
 
       if (creditUpdateError) {
         console.error("Error updating credits:", creditUpdateError);
@@ -162,7 +164,7 @@ export async function GET(
 
       // Record credit transaction
       const { error: txError } = await supabase.from("credit_transactions").insert({
-        user_id: user.id,
+        user_id: auth.user.id,
         amount: -creditCost,
         balance_after: newBalance,
         type: "filter",
@@ -196,7 +198,7 @@ export async function GET(
       const { data: historyEntry, error: historyError } = await supabase
         .from("filter_history")
         .insert({
-          user_id: user.id,
+          user_id: auth.user.id,
           video_id: videoRecord?.id,
           filter_type: jobRecord.filter_type || "mute",
           custom_words: jobRecord.custom_words || [],

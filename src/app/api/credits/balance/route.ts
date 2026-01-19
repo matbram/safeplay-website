@@ -1,24 +1,26 @@
 import { createClient } from "@/lib/supabase/server";
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
+import { authenticateRequest } from "@/lib/auth-helper";
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
-    const supabase = await createClient();
+    // Authenticate via session cookie or bearer token
+    const auth = await authenticateRequest(request);
 
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-
-    if (authError || !user) {
+    if (!auth.user) {
       return NextResponse.json(
-        { error: "Unauthorized" },
+        { error: auth.error || "Unauthorized" },
         { status: 401 }
       );
     }
+
+    const supabase = await createClient();
 
     // Get credit balance
     const { data: balance, error } = await supabase
       .from("credit_balances")
       .select("*")
-      .eq("user_id", user.id)
+      .eq("user_id", auth.user.id)
       .single();
 
     if (error) {
@@ -32,7 +34,7 @@ export async function GET() {
     const { data: subscription } = await supabase
       .from("subscriptions")
       .select("*, plans(*)")
-      .eq("user_id", user.id)
+      .eq("user_id", auth.user.id)
       .single();
 
     const plan = subscription?.plans;

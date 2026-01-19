@@ -1,23 +1,23 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { authenticateRequest } from "@/lib/auth-helper";
 
 const ORCHESTRATOR_URL = process.env.ORCHESTRATION_API_URL || "https://safeplay-orchestrator-production.up.railway.app";
 const ORCHESTRATOR_API_KEY = process.env.ORCHESTRATION_API_KEY;
 
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
   try {
-    const supabase = await createClient();
+    // Authenticate via session cookie or bearer token
+    const auth = await authenticateRequest(request);
 
-    // Get authenticated user
-    const { data: { user }, error: userError } = await supabase.auth.getUser();
-
-    if (userError || !user) {
+    if (!auth.user) {
       return NextResponse.json(
-        { error: "Unauthorized" },
+        { error: auth.error || "Unauthorized" },
         { status: 401 }
       );
     }
 
+    const supabase = await createClient();
     const { youtube_id, filter_type, custom_words } = await request.json();
 
     if (!youtube_id) {
@@ -40,7 +40,7 @@ export async function POST(request: Request) {
       const { data: historyEntry, error: historyError } = await supabase
         .from("filter_history")
         .insert({
-          user_id: user.id,
+          user_id: auth.user.id,
           video_id: cachedVideo.id,
           filter_type: filter_type || "mute",
           custom_words: custom_words || [],
@@ -102,7 +102,7 @@ export async function POST(request: Request) {
       const { data: creditBalance } = await supabase
         .from("credit_balances")
         .select("*")
-        .eq("user_id", user.id)
+        .eq("user_id", auth.user.id)
         .single();
 
       const availableCredits = creditBalance?.available_credits || 0;
@@ -129,7 +129,7 @@ export async function POST(request: Request) {
           available_credits: newBalance,
           used_this_period: newUsed,
         })
-        .eq("user_id", user.id);
+        .eq("user_id", auth.user.id);
 
       if (creditUpdateError) {
         console.error("Error updating credits:", creditUpdateError);
@@ -137,7 +137,7 @@ export async function POST(request: Request) {
 
       // Record credit transaction
       const { error: txError } = await supabase.from("credit_transactions").insert({
-        user_id: user.id,
+        user_id: auth.user.id,
         amount: -creditCost,
         balance_after: newBalance,
         type: "filter",
@@ -171,7 +171,7 @@ export async function POST(request: Request) {
       const { data: historyEntry, error: historyError } = await supabase
         .from("filter_history")
         .insert({
-          user_id: user.id,
+          user_id: auth.user.id,
           video_id: videoRecord?.id,
           filter_type: filter_type || "mute",
           custom_words: custom_words || [],
@@ -204,7 +204,7 @@ export async function POST(request: Request) {
     if (data.status === "processing" && data.job_id) {
       const { error: jobError } = await supabase.from("filter_jobs").upsert({
         job_id: data.job_id,
-        user_id: user.id,
+        user_id: auth.user.id,
         youtube_id: youtube_id,
         filter_type: filter_type || "mute",
         custom_words: custom_words || [],

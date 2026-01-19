@@ -1,5 +1,6 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { authenticateRequest } from "@/lib/auth-helper";
 
 // Calculate credit cost: 1 credit per minute, minimum 1 credit
 function calculateCreditCost(durationSeconds: number): number {
@@ -140,20 +141,19 @@ async function scrapeYouTubeMetadata(videoId: string): Promise<{
   }
 }
 
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
   try {
-    const supabase = await createClient();
+    // Authenticate via session cookie or bearer token
+    const auth = await authenticateRequest(request);
 
-    // Get authenticated user
-    const { data: { user }, error: userError } = await supabase.auth.getUser();
-
-    if (userError || !user) {
+    if (!auth.user) {
       return NextResponse.json(
-        { error: "Unauthorized" },
+        { error: auth.error || "Unauthorized" },
         { status: 401 }
       );
     }
 
+    const supabase = await createClient();
     const { youtube_url, youtube_id } = await request.json();
 
     // Extract YouTube ID from URL if needed
@@ -176,6 +176,15 @@ export async function POST(request: Request) {
       .eq("youtube_id", videoId)
       .single();
 
+    // Get user's credit balance
+    const { data: creditBalance } = await supabase
+      .from("credit_balances")
+      .select("available_credits")
+      .eq("user_id", auth.user.id)
+      .single();
+
+    const userCredits = creditBalance?.available_credits || 0;
+
     if (cachedVideo && cachedVideo.transcript) {
       // Video is cached with transcript - free to rewatch
       return NextResponse.json({
@@ -187,6 +196,7 @@ export async function POST(request: Request) {
         credit_cost: 0, // Free for cached videos
         cached: true,
         has_transcript: true,
+        user_credits: userCredits,
       });
     }
 
@@ -232,6 +242,8 @@ export async function POST(request: Request) {
       credit_cost: creditCost,
       cached: false,
       has_transcript: false,
+      user_credits: userCredits,
+      has_sufficient_credits: userCredits >= creditCost || creditCost === 0,
       // If duration is still 0, we couldn't get it
       ...(durationSeconds === 0 && {
         credit_cost_note: "Duration unavailable. Cost will be ~1 credit per minute.",
