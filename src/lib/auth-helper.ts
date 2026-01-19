@@ -22,9 +22,11 @@ export async function authenticateRequest(request: NextRequest): Promise<AuthRes
 
   if (authHeader?.startsWith("Bearer ")) {
     const token = authHeader.substring(7);
+    console.log("Auth: Using bearer token authentication, token length:", token.length);
     return authenticateWithToken(token);
   }
 
+  console.log("Auth: Using session-based authentication");
   // Fall back to session-based auth (website)
   return authenticateWithSession();
 }
@@ -38,10 +40,27 @@ async function authenticateWithToken(token: string): Promise<AuthResult> {
     const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
     if (!supabaseUrl || !supabaseAnonKey) {
+      console.error("Missing Supabase configuration");
       return { user: null, error: "Server configuration error", supabase: null };
     }
 
-    // Create a client with the user's token
+    // Create a standard client first to verify the token
+    const verifyClient = createBrowserClient(supabaseUrl, supabaseAnonKey);
+
+    // Verify the token by getting the user - this validates the JWT
+    const { data: { user }, error } = await verifyClient.auth.getUser(token);
+
+    if (error) {
+      console.error("Token verification error:", error.message);
+      return { user: null, error: "Invalid or expired token", supabase: null };
+    }
+
+    if (!user) {
+      console.error("No user found for token");
+      return { user: null, error: "Invalid or expired token", supabase: null };
+    }
+
+    // Now create a client with the token for RLS-protected queries
     const supabase = createBrowserClient(supabaseUrl, supabaseAnonKey, {
       global: {
         headers: {
@@ -49,13 +68,6 @@ async function authenticateWithToken(token: string): Promise<AuthResult> {
         },
       },
     });
-
-    // Verify the token by getting the user
-    const { data: { user }, error } = await supabase.auth.getUser(token);
-
-    if (error || !user) {
-      return { user: null, error: "Invalid or expired token", supabase: null };
-    }
 
     return {
       user: {
