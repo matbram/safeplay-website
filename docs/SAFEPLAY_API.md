@@ -25,13 +25,86 @@ const headers = {
 
 ### Getting the Auth Token
 
-After user logs in via the website, the extension should store the Supabase access token:
+After user logs in via the website, the extension receives auth data including tokens:
 
 ```typescript
-// In background script or via deep link from website
+// Received from website via chrome.runtime.sendMessage
+interface AuthData {
+  token: string;          // access_token for API calls
+  refreshToken: string;   // refresh_token for renewing expired tokens
+  expiresAt: number;      // Unix timestamp when token expires
+  userId: string;
+  // ... other user data
+}
+
+// Store in extension
 chrome.storage.local.set({
-  safeplay_auth_token: supabaseSession.access_token
+  safeplay_auth_token: authData.token,
+  safeplay_refresh_token: authData.refreshToken,
+  safeplay_token_expires_at: authData.expiresAt,
 });
+```
+
+### Refreshing Expired Tokens
+
+Access tokens expire after ~1 hour. Use the refresh endpoint to get new tokens:
+
+```
+POST /api/auth/refresh
+```
+
+**Request:**
+```json
+{
+  "refresh_token": "your-refresh-token"
+}
+```
+
+**Response:**
+```json
+{
+  "access_token": "new-access-token",
+  "refresh_token": "new-refresh-token",
+  "expires_at": 1705680000,
+  "user": {
+    "id": "user-uuid",
+    "email": "user@example.com"
+  }
+}
+```
+
+**Example refresh logic:**
+```typescript
+async function getValidToken(): Promise<string> {
+  const { safeplay_auth_token, safeplay_refresh_token, safeplay_token_expires_at } =
+    await chrome.storage.local.get(['safeplay_auth_token', 'safeplay_refresh_token', 'safeplay_token_expires_at']);
+
+  // Check if token is expired (with 5 min buffer)
+  const isExpired = safeplay_token_expires_at && (safeplay_token_expires_at * 1000) < (Date.now() + 300000);
+
+  if (isExpired && safeplay_refresh_token) {
+    const response = await fetch('https://safeplay.app/api/auth/refresh', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ refresh_token: safeplay_refresh_token }),
+    });
+
+    if (response.ok) {
+      const data = await response.json();
+      await chrome.storage.local.set({
+        safeplay_auth_token: data.access_token,
+        safeplay_refresh_token: data.refresh_token,
+        safeplay_token_expires_at: data.expires_at,
+      });
+      return data.access_token;
+    } else {
+      // Refresh failed, user needs to re-login
+      throw new Error('Session expired. Please sign in again.');
+    }
+  }
+
+  return safeplay_auth_token;
+}
 ```
 
 ---

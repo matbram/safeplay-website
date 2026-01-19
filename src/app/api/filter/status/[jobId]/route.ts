@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
 import { authenticateRequest } from "@/lib/auth-helper";
 
 const ORCHESTRATOR_URL = process.env.ORCHESTRATION_API_URL || "https://safeplay-orchestrator-production.up.railway.app";
@@ -15,14 +14,14 @@ export async function GET(
     // Authenticate via session cookie or bearer token
     const auth = await authenticateRequest(request);
 
-    if (!auth.user) {
+    if (!auth.user || !auth.supabase) {
       return NextResponse.json(
         { error: auth.error || "Unauthorized" },
         { status: 401 }
       );
     }
 
-    const supabase = await createClient();
+    const supabase = auth.supabase;
 
     // Check if this job belongs to the user
     const { data: jobRecord } = await supabase
@@ -269,7 +268,8 @@ export async function GET(
 }
 
 function calculateCreditCost(durationSeconds: number): number {
-  // 1 credit per minute of video, minimum 1 credit
-  const minutes = Math.ceil(durationSeconds / 60);
+  // 1 credit per minute, rounded at 30 second mark
+  if (durationSeconds === 0) return 0;
+  const minutes = Math.round(durationSeconds / 60);
   return Math.max(1, minutes);
 }

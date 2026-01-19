@@ -1,27 +1,29 @@
-import { createClient } from "@/lib/supabase/server";
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
+import { authenticateRequest } from "@/lib/auth-helper";
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
-    const supabase = await createClient();
+    // Authenticate via session cookie or bearer token
+    const auth = await authenticateRequest(request);
 
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-
-    if (authError || !user) {
+    if (!auth.user || !auth.supabase) {
       return NextResponse.json(
-        { error: "Unauthorized" },
+        { error: auth.error || "Unauthorized" },
         { status: 401 }
       );
     }
 
-    // Get user profile
+    const supabase = auth.supabase;
+
+    // Get user profile - use maybeSingle() to handle missing profile
     const { data: profile, error: profileError } = await supabase
       .from("profiles")
       .select("*")
-      .eq("id", user.id)
-      .single();
+      .eq("id", auth.user.id)
+      .maybeSingle();
 
     if (profileError) {
+      console.error("Profile fetch error:", profileError);
       return NextResponse.json(
         { error: "Failed to fetch profile" },
         { status: 500 }
@@ -32,24 +34,24 @@ export async function GET() {
     const { data: subscription } = await supabase
       .from("subscriptions")
       .select("*, plans(*)")
-      .eq("user_id", user.id)
-      .single();
+      .eq("user_id", auth.user.id)
+      .maybeSingle();
 
     // Get credit balance
     const { data: credits } = await supabase
       .from("credit_balances")
       .select("*")
-      .eq("user_id", user.id)
-      .single();
+      .eq("user_id", auth.user.id)
+      .maybeSingle();
 
     return NextResponse.json({
       user: {
-        id: user.id,
-        email: user.email,
-        ...profile,
+        id: auth.user.id,
+        email: auth.user.email,
+        ...(profile || {}),
       },
-      subscription,
-      credits,
+      subscription: subscription || null,
+      credits: credits || null,
     });
   } catch (error) {
     console.error("Profile fetch error:", error);
@@ -60,19 +62,19 @@ export async function GET() {
   }
 }
 
-export async function PATCH(request: Request) {
+export async function PATCH(request: NextRequest) {
   try {
-    const supabase = await createClient();
+    // Authenticate via session cookie or bearer token
+    const auth = await authenticateRequest(request);
 
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-
-    if (authError || !user) {
+    if (!auth.user || !auth.supabase) {
       return NextResponse.json(
-        { error: "Unauthorized" },
+        { error: auth.error || "Unauthorized" },
         { status: 401 }
       );
     }
 
+    const supabase = auth.supabase;
     const updates = await request.json();
 
     // Only allow updating certain fields
@@ -89,7 +91,7 @@ export async function PATCH(request: Request) {
     const { data, error } = await supabase
       .from("profiles")
       .update(filteredUpdates)
-      .eq("id", user.id)
+      .eq("id", auth.user.id)
       .select()
       .single();
 

@@ -1,12 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
 import { authenticateRequest } from "@/lib/auth-helper";
 
-// Calculate credit cost: 1 credit per minute, minimum 1 credit
+// Calculate credit cost: 1 credit per minute, rounded at 30 seconds
 function calculateCreditCost(durationSeconds: number): number {
   if (durationSeconds === 0) return 0;
-  const minutes = Math.ceil(durationSeconds / 60);
-  return Math.max(1, minutes);
+  const minutes = Math.round(durationSeconds / 60); // Round at 30 second mark
+  return Math.max(1, minutes); // Minimum 1 credit
 }
 
 // Extract JSON object from string starting at given position
@@ -146,14 +145,14 @@ export async function POST(request: NextRequest) {
     // Authenticate via session cookie or bearer token
     const auth = await authenticateRequest(request);
 
-    if (!auth.user) {
+    if (!auth.user || !auth.supabase) {
       return NextResponse.json(
         { error: auth.error || "Unauthorized" },
         { status: 401 }
       );
     }
 
-    const supabase = await createClient();
+    const supabase = auth.supabase;
     const { youtube_url, youtube_id } = await request.json();
 
     // Extract YouTube ID from URL if needed
@@ -187,11 +186,35 @@ export async function POST(request: NextRequest) {
 
     if (cachedVideo && cachedVideo.transcript) {
       // Video is cached with transcript - free to rewatch
+      // But if duration is 0, try to get it from scraping
+      let duration = cachedVideo.duration_seconds || 0;
+      console.log("Preview: Cached video found, duration from DB:", duration);
+
+      if (duration === 0) {
+        // Duration missing from cache, try to scrape it
+        console.log("Preview: Duration is 0, re-scraping YouTube...");
+        const scrapedData = await scrapeYouTubeMetadata(videoId);
+        console.log("Preview: Scraped duration:", scrapedData?.durationSeconds);
+        if (scrapedData?.durationSeconds) {
+          duration = scrapedData.durationSeconds;
+          // Update the cached video with the correct duration
+          const { error: updateError } = await supabase
+            .from("videos")
+            .update({ duration_seconds: duration })
+            .eq("youtube_id", videoId);
+          if (updateError) {
+            console.error("Preview: Failed to update duration:", updateError);
+          } else {
+            console.log("Preview: Updated cached duration to:", duration);
+          }
+        }
+      }
+
       return NextResponse.json({
         youtube_id: cachedVideo.youtube_id,
         title: cachedVideo.title,
         channel_name: cachedVideo.channel_name,
-        duration_seconds: cachedVideo.duration_seconds,
+        duration_seconds: duration,
         thumbnail_url: cachedVideo.thumbnail_url || `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`,
         credit_cost: 0, // Free for cached videos
         cached: true,

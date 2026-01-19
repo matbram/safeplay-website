@@ -15,6 +15,8 @@ function LoginForm() {
   const searchParams = useSearchParams();
   const returnTo = searchParams.get("returnTo") || "/dashboard";
   const errorParam = searchParams.get("error");
+  const extensionId = searchParams.get("extension");
+  const callback = searchParams.get("callback");
 
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -78,8 +80,14 @@ function LoginForm() {
         return;
       }
 
-      // Redirect to dashboard on success
-      router.push(returnTo);
+      // Check if this is an extension login callback
+      if (extensionId && callback === "extension") {
+        // Redirect to extension auth page to send token to extension
+        router.push(`/extension/auth?extension=${extensionId}`);
+      } else {
+        // Normal login - redirect to dashboard
+        router.push(returnTo);
+      }
       router.refresh();
     } catch (error) {
       setGeneralError("An unexpected error occurred. Please try again.");
@@ -98,10 +106,18 @@ function LoginForm() {
         return;
       }
 
+      // Build redirect URL, preserving extension params if present
+      let redirectUrl = `${window.location.origin}/api/auth/callback`;
+      if (extensionId && callback === "extension") {
+        redirectUrl += `?next=${encodeURIComponent(`/extension/auth?extension=${extensionId}`)}`;
+      } else {
+        redirectUrl += `?next=${encodeURIComponent(returnTo)}`;
+      }
+
       const { error } = await supabase.auth.signInWithOAuth({
         provider: "google",
         options: {
-          redirectTo: `${window.location.origin}/api/auth/callback?next=${encodeURIComponent(returnTo)}`,
+          redirectTo: redirectUrl,
         },
       });
 
