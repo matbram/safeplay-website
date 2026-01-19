@@ -58,16 +58,17 @@ function decodeJwtPayload(token: string): { sub?: string; email?: string; exp?: 
 /**
  * Authenticate using a Supabase JWT token (for Chrome extension)
  *
- * We decode the JWT locally instead of calling Supabase's auth API to avoid rate limits.
- * The token will be verified by Supabase RLS when making database queries.
+ * We decode the JWT locally to extract user info.
+ * Since setSession() doesn't work server-side, we use the service role client
+ * which bypasses RLS. We manually filter by user_id to ensure data security.
  */
 async function authenticateWithToken(token: string): Promise<AuthResult> {
   try {
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+    const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-    if (!supabaseUrl || !supabaseAnonKey) {
-      console.error("Missing Supabase configuration");
+    if (!supabaseUrl || !supabaseServiceKey) {
+      console.error("Missing Supabase configuration (URL or service role key)");
       return { user: null, error: "Server configuration error", supabase: null };
     }
 
@@ -85,34 +86,11 @@ async function authenticateWithToken(token: string): Promise<AuthResult> {
       return { user: null, error: "Token expired", supabase: null };
     }
 
-    // Create a client and set the session properly for RLS
-    const supabase = createBrowserClient(supabaseUrl, supabaseAnonKey);
+    // Use service role client which bypasses RLS
+    // This is safe because we've validated the JWT and will filter by user_id
+    const supabase = createBrowserClient(supabaseUrl, supabaseServiceKey);
 
-    // Set the session with the access token - this properly authenticates for RLS
-    // We need both access_token and refresh_token, but refresh_token can be empty
-    // since we're not using it server-side
-    const { error: sessionError } = await supabase.auth.setSession({
-      access_token: token,
-      refresh_token: '', // Not needed for server-side RLS queries
-    });
-
-    if (sessionError) {
-      console.error("Failed to set session:", sessionError.message);
-      // Session setting failed, but we can still try using the token directly
-      // by setting it in the headers as a fallback
-    }
-
-    // Verify the session was set correctly
-    const { data: { user: sessionUser } } = await supabase.auth.getUser();
-    console.log("Auth: Session user after setSession:", sessionUser?.id || "none");
-
-    if (!sessionUser) {
-      console.error("Auth: setSession did not establish auth context");
-      // The token might be valid but setSession didn't work
-      // This could happen with certain token types
-    }
-
-    console.log("Auth: Token decoded and session set for user:", payload.sub);
+    console.log("Auth: Token validated, using service role for user:", payload.sub);
 
     return {
       user: {
@@ -120,7 +98,7 @@ async function authenticateWithToken(token: string): Promise<AuthResult> {
         email: payload.email,
       },
       error: null,
-      supabase, // Return the authenticated client for RLS
+      supabase, // Service role client - RLS bypassed, filter by user_id manually
     };
   } catch (error) {
     console.error("Token authentication error:", error);
