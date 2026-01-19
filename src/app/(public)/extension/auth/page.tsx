@@ -29,11 +29,12 @@ export default function ExtensionAuthPage() {
       const supabase = createClient();
       const { data: { session } } = await supabase.auth.getSession();
 
+      const params = new URLSearchParams(window.location.search);
+      // Support both 'extension' and 'extensionId' parameter names
+      const extensionId = params.get('extension') || params.get('extensionId') || '';
+
       if (!session) {
         // Redirect to login with extension callback
-        const params = new URLSearchParams(window.location.search);
-        const extensionId = params.get('extension') || '';
-
         if (extensionId) {
           // Redirect to login, preserving extension params
           window.location.href = `/login?extension=${extensionId}&callback=extension`;
@@ -43,9 +44,6 @@ export default function ExtensionAuthPage() {
         }
         return;
       }
-
-      const params = new URLSearchParams(window.location.search);
-      const extensionId = params.get('extension');
 
       if (!extensionId) {
         setStatus('error');
