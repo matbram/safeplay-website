@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
 import { authenticateRequest } from "@/lib/auth-helper";
 
 // Calculate credit cost: 1 credit per minute, rounded at 30 seconds
@@ -146,14 +145,14 @@ export async function POST(request: NextRequest) {
     // Authenticate via session cookie or bearer token
     const auth = await authenticateRequest(request);
 
-    if (!auth.user) {
+    if (!auth.user || !auth.supabase) {
       return NextResponse.json(
         { error: auth.error || "Unauthorized" },
         { status: 401 }
       );
     }
 
-    const supabase = await createClient();
+    const supabase = auth.supabase;
     const { youtube_url, youtube_id } = await request.json();
 
     // Extract YouTube ID from URL if needed

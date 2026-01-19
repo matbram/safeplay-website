@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
 import { authenticateRequest } from "@/lib/auth-helper";
 
 const ORCHESTRATOR_URL = process.env.ORCHESTRATION_API_URL || "https://safeplay-orchestrator-production.up.railway.app";
@@ -15,14 +14,14 @@ export async function GET(
     // Authenticate via session cookie or bearer token
     const auth = await authenticateRequest(request);
 
-    if (!auth.user) {
+    if (!auth.user || !auth.supabase) {
       return NextResponse.json(
         { error: auth.error || "Unauthorized" },
         { status: 401 }
       );
     }
 
-    const supabase = await createClient();
+    const supabase = auth.supabase;
 
     // Check if this job belongs to the user
     const { data: jobRecord } = await supabase

@@ -1,5 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
-import { createClient as createBrowserClient } from "@supabase/supabase-js";
+import { createClient as createBrowserClient, SupabaseClient } from "@supabase/supabase-js";
 import { NextRequest } from "next/server";
 
 export interface AuthResult {
@@ -8,6 +8,7 @@ export interface AuthResult {
     email?: string;
   } | null;
   error: string | null;
+  supabase: SupabaseClient | null;
 }
 
 /**
@@ -37,7 +38,7 @@ async function authenticateWithToken(token: string): Promise<AuthResult> {
     const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
     if (!supabaseUrl || !supabaseAnonKey) {
-      return { user: null, error: "Server configuration error" };
+      return { user: null, error: "Server configuration error", supabase: null };
     }
 
     // Create a client with the user's token
@@ -53,7 +54,7 @@ async function authenticateWithToken(token: string): Promise<AuthResult> {
     const { data: { user }, error } = await supabase.auth.getUser(token);
 
     if (error || !user) {
-      return { user: null, error: "Invalid or expired token" };
+      return { user: null, error: "Invalid or expired token", supabase: null };
     }
 
     return {
@@ -62,10 +63,11 @@ async function authenticateWithToken(token: string): Promise<AuthResult> {
         email: user.email,
       },
       error: null,
+      supabase, // Return the authenticated client for RLS
     };
   } catch (error) {
     console.error("Token authentication error:", error);
-    return { user: null, error: "Authentication failed" };
+    return { user: null, error: "Authentication failed", supabase: null };
   }
 }
 
@@ -78,7 +80,7 @@ async function authenticateWithSession(): Promise<AuthResult> {
     const { data: { user }, error } = await supabase.auth.getUser();
 
     if (error || !user) {
-      return { user: null, error: "Not authenticated" };
+      return { user: null, error: "Not authenticated", supabase: null };
     }
 
     return {
@@ -87,9 +89,10 @@ async function authenticateWithSession(): Promise<AuthResult> {
         email: user.email,
       },
       error: null,
+      supabase, // Return the authenticated client for RLS
     };
   } catch (error) {
     console.error("Session authentication error:", error);
-    return { user: null, error: "Authentication failed" };
+    return { user: null, error: "Authentication failed", supabase: null };
   }
 }
