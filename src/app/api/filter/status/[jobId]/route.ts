@@ -269,7 +269,8 @@ export async function GET(
 }
 
 function calculateCreditCost(durationSeconds: number): number {
-  // 1 credit per minute of video, minimum 1 credit
-  const minutes = Math.ceil(durationSeconds / 60);
+  // 1 credit per minute, rounded at 30 second mark
+  if (durationSeconds === 0) return 0;
+  const minutes = Math.round(durationSeconds / 60);
   return Math.max(1, minutes);
 }

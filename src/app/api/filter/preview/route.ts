@@ -2,11 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { authenticateRequest } from "@/lib/auth-helper";
 
-// Calculate credit cost: 1 credit per minute, minimum 1 credit
+// Calculate credit cost: 1 credit per minute, rounded at 30 seconds
 function calculateCreditCost(durationSeconds: number): number {
   if (durationSeconds === 0) return 0;
-  const minutes = Math.ceil(durationSeconds / 60);
-  return Math.max(1, minutes);
+  const minutes = Math.round(durationSeconds / 60); // Round at 30 second mark
+  return Math.max(1, minutes); // Minimum 1 credit
 }
 
 // Extract JSON object from string starting at given position
