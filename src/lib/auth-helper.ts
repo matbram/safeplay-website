@@ -91,10 +91,26 @@ async function authenticateWithToken(token: string): Promise<AuthResult> {
     // Set the session with the access token - this properly authenticates for RLS
     // We need both access_token and refresh_token, but refresh_token can be empty
     // since we're not using it server-side
-    await supabase.auth.setSession({
+    const { error: sessionError } = await supabase.auth.setSession({
       access_token: token,
       refresh_token: '', // Not needed for server-side RLS queries
     });
+
+    if (sessionError) {
+      console.error("Failed to set session:", sessionError.message);
+      // Session setting failed, but we can still try using the token directly
+      // by setting it in the headers as a fallback
+    }
+
+    // Verify the session was set correctly
+    const { data: { user: sessionUser } } = await supabase.auth.getUser();
+    console.log("Auth: Session user after setSession:", sessionUser?.id || "none");
+
+    if (!sessionUser) {
+      console.error("Auth: setSession did not establish auth context");
+      // The token might be valid but setSession didn't work
+      // This could happen with certain token types
+    }
 
     console.log("Auth: Token decoded and session set for user:", payload.sub);
 
