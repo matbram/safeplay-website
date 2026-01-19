@@ -186,11 +186,27 @@ export async function POST(request: NextRequest) {
 
     if (cachedVideo && cachedVideo.transcript) {
       // Video is cached with transcript - free to rewatch
+      // But if duration is 0, try to get it from scraping
+      let duration = cachedVideo.duration_seconds || 0;
+
+      if (duration === 0) {
+        // Duration missing from cache, try to scrape it
+        const scrapedData = await scrapeYouTubeMetadata(videoId);
+        if (scrapedData?.durationSeconds) {
+          duration = scrapedData.durationSeconds;
+          // Update the cached video with the correct duration
+          await supabase
+            .from("videos")
+            .update({ duration_seconds: duration })
+            .eq("youtube_id", videoId);
+        }
+      }
+
       return NextResponse.json({
         youtube_id: cachedVideo.youtube_id,
         title: cachedVideo.title,
         channel_name: cachedVideo.channel_name,
-        duration_seconds: cachedVideo.duration_seconds,
+        duration_seconds: duration,
         thumbnail_url: cachedVideo.thumbnail_url || `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`,
         credit_cost: 0, // Free for cached videos
         cached: true,
