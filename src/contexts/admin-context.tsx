@@ -86,53 +86,23 @@ export function AdminProvider({ children }: { children: ReactNode }) {
       setLoading(true);
       setError(null);
 
-      const supabase = createClient();
-
-      // Get current user
-      const {
-        data: { user },
-        error: authError,
-      } = await supabase.auth.getUser();
-
-      if (authError || !user) {
-        setAdmin(null);
-        setError("Not authenticated");
-        return;
-      }
-
-      // Get admin role
-      const { data: adminRole, error: roleError } = await supabase
-        .from("admin_roles")
-        .select("*")
-        .eq("user_id", user.id)
-        .single();
-
-      if (roleError || !adminRole) {
-        setAdmin(null);
-        setError("Not authorized as admin");
-        return;
-      }
-
-      // Get profile for name
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("full_name")
-        .eq("id", user.id)
-        .single();
-
-      // Merge permissions
-      const role = adminRole.role as AdminRole;
-      const defaultPerms = DEFAULT_PERMISSIONS[role] || {};
-      const customPerms = (adminRole.permissions as AdminPermissions) || {};
-      const mergedPermissions = { ...defaultPerms, ...customPerms };
-
-      setAdmin({
-        id: user.id,
-        email: user.email,
-        role,
-        permissions: mergedPermissions,
-        full_name: profile?.full_name || undefined,
+      // Call the API endpoint instead of querying directly
+      // This uses the service role client on the server to bypass RLS
+      const response = await fetch("/api/admin/me", {
+        method: "GET",
+        credentials: "include",
+        cache: "no-store",
       });
+
+      if (!response.ok) {
+        const data = await response.json();
+        setAdmin(null);
+        setError(data.error || "Not authorized");
+        return;
+      }
+
+      const data = await response.json();
+      setAdmin(data.admin);
     } catch (err) {
       console.error("Admin fetch error:", err);
       setError("Failed to fetch admin data");
