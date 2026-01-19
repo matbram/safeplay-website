@@ -174,40 +174,56 @@ export async function GET(
         console.error("Error recording transaction:", txError);
       }
 
-      // Cache video in our database
+      // Cache video in our database - use upsert with onConflict
       const { data: videoRecord, error: videoError } = await supabase
         .from("videos")
-        .upsert({
-          youtube_id: jobRecord.youtube_id,
-          title: data.video?.title || data.transcript.title || "Unknown Video",
-          channel_name: data.video?.channel_name || null,
-          duration_seconds: durationSeconds,
-          thumbnail_url: `https://img.youtube.com/vi/${jobRecord.youtube_id}/maxresdefault.jpg`,
-          transcript: data.transcript,
-          cached_at: new Date().toISOString(),
-        })
+        .upsert(
+          {
+            youtube_id: jobRecord.youtube_id,
+            title: data.video?.title || data.transcript.title || "Unknown Video",
+            channel_name: data.video?.channel_name || null,
+            duration_seconds: durationSeconds,
+            thumbnail_url: `https://img.youtube.com/vi/${jobRecord.youtube_id}/maxresdefault.jpg`,
+            transcript: data.transcript,
+            cached_at: new Date().toISOString(),
+          },
+          { onConflict: "youtube_id" }
+        )
         .select()
         .single();
 
+      // If upsert failed, try to get existing video
+      let videoId = videoRecord?.id;
       if (videoError) {
         console.error("Error caching video:", videoError);
+        // Try to get existing video record
+        const { data: existingVideo } = await supabase
+          .from("videos")
+          .select("id")
+          .eq("youtube_id", jobRecord.youtube_id)
+          .single();
+        videoId = existingVideo?.id;
       }
 
-      // Record in filter history
-      const { data: historyEntry, error: historyError } = await supabase
-        .from("filter_history")
-        .insert({
-          user_id: auth.user.id,
-          video_id: videoRecord?.id,
-          filter_type: jobRecord.filter_type || "mute",
-          custom_words: jobRecord.custom_words || [],
-          credits_used: creditCost,
-        })
-        .select()
-        .single();
+      // Record in filter history (only if we have a video_id)
+      let historyEntry = null;
+      if (videoId) {
+        const { data: history, error: historyError } = await supabase
+          .from("filter_history")
+          .insert({
+            user_id: auth.user.id,
+            video_id: videoId,
+            filter_type: jobRecord.filter_type || "mute",
+            custom_words: jobRecord.custom_words || [],
+            credits_used: creditCost,
+          })
+          .select()
+          .single();
 
-      if (historyError) {
-        console.error("Error saving history:", historyError);
+        if (historyError) {
+          console.error("Error saving history:", historyError);
+        }
+        historyEntry = history;
       }
 
       // Mark job as completed
