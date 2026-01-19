@@ -188,17 +188,25 @@ export async function POST(request: NextRequest) {
       // Video is cached with transcript - free to rewatch
       // But if duration is 0, try to get it from scraping
       let duration = cachedVideo.duration_seconds || 0;
+      console.log("Preview: Cached video found, duration from DB:", duration);
 
       if (duration === 0) {
         // Duration missing from cache, try to scrape it
+        console.log("Preview: Duration is 0, re-scraping YouTube...");
         const scrapedData = await scrapeYouTubeMetadata(videoId);
+        console.log("Preview: Scraped duration:", scrapedData?.durationSeconds);
         if (scrapedData?.durationSeconds) {
           duration = scrapedData.durationSeconds;
           // Update the cached video with the correct duration
-          await supabase
+          const { error: updateError } = await supabase
             .from("videos")
             .update({ duration_seconds: duration })
             .eq("youtube_id", videoId);
+          if (updateError) {
+            console.error("Preview: Failed to update duration:", updateError);
+          } else {
+            console.log("Preview: Updated cached duration to:", duration);
+          }
         }
       }
 
