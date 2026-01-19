@@ -39,7 +39,27 @@ export async function authenticateRequest(request: NextRequest): Promise<AuthRes
 }
 
 /**
+ * Decode a JWT token to extract payload (without verification - RLS will verify)
+ */
+function decodeJwtPayload(token: string): { sub?: string; email?: string; exp?: number } | null {
+  try {
+    const parts = token.split('.');
+    if (parts.length !== 3) {
+      return null;
+    }
+    // Decode the payload (middle part)
+    const payload = Buffer.from(parts[1], 'base64').toString('utf-8');
+    return JSON.parse(payload);
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Authenticate using a Supabase JWT token (for Chrome extension)
+ *
+ * We decode the JWT locally instead of calling Supabase's auth API to avoid rate limits.
+ * The token will be verified by Supabase RLS when making database queries.
  */
 async function authenticateWithToken(token: string): Promise<AuthResult> {
   try {
@@ -51,23 +71,22 @@ async function authenticateWithToken(token: string): Promise<AuthResult> {
       return { user: null, error: "Server configuration error", supabase: null };
     }
 
-    // Create a standard client first to verify the token
-    const verifyClient = createBrowserClient(supabaseUrl, supabaseAnonKey);
+    // Decode the JWT locally to extract user info
+    const payload = decodeJwtPayload(token);
 
-    // Verify the token by getting the user - this validates the JWT
-    const { data: { user }, error } = await verifyClient.auth.getUser(token);
-
-    if (error) {
-      console.error("Token verification error:", error.message);
-      return { user: null, error: "Invalid or expired token", supabase: null };
+    if (!payload || !payload.sub) {
+      console.error("Invalid JWT format or missing sub claim");
+      return { user: null, error: "Invalid token format", supabase: null };
     }
 
-    if (!user) {
-      console.error("No user found for token");
-      return { user: null, error: "Invalid or expired token", supabase: null };
+    // Check if token is expired
+    if (payload.exp && payload.exp * 1000 < Date.now()) {
+      console.error("Token expired at:", new Date(payload.exp * 1000).toISOString());
+      return { user: null, error: "Token expired", supabase: null };
     }
 
-    // Now create a client with the token for RLS-protected queries
+    // Create a client with the token for RLS-protected queries
+    // RLS will verify the token signature when queries are made
     const supabase = createBrowserClient(supabaseUrl, supabaseAnonKey, {
       global: {
         headers: {
@@ -76,10 +95,12 @@ async function authenticateWithToken(token: string): Promise<AuthResult> {
       },
     });
 
+    console.log("Auth: Token decoded successfully for user:", payload.sub);
+
     return {
       user: {
-        id: user.id,
-        email: user.email,
+        id: payload.sub,
+        email: payload.email,
       },
       error: null,
       supabase, // Return the authenticated client for RLS
