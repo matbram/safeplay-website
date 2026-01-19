@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -26,7 +26,6 @@ import {
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   User,
-  Mail,
   Lock,
   Shield,
   Bell,
@@ -38,33 +37,37 @@ import {
   Plus,
   X,
   Camera,
+  Loader2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useUser } from "@/contexts/user-context";
+import { createClient } from "@/lib/supabase/client";
 
-// Mock user data
-const mockUser = {
-  id: "1",
-  name: "John Doe",
-  email: "john@example.com",
-  avatar_url: null,
-  plan: "Individual",
-};
-
-const mockPreferences: {
+interface Preferences {
   default_filter_type: "mute" | "bleep";
   sensitivity_level: "low" | "moderate" | "high";
   custom_words: string[];
   auto_save_history: boolean;
   data_retention_days: number | null;
-} = {
+}
+
+interface Notifications {
+  billing_alerts: boolean;
+  usage_alerts: boolean;
+  credit_low_threshold: number;
+  feature_updates: boolean;
+  marketing_emails: boolean;
+}
+
+const defaultPreferences: Preferences = {
   default_filter_type: "mute",
   sensitivity_level: "moderate",
-  custom_words: ["darn", "heck", "shoot"],
+  custom_words: [],
   auto_save_history: true,
   data_retention_days: 90,
 };
 
-const mockNotifications = {
+const defaultNotifications: Notifications = {
   billing_alerts: true,
   usage_alerts: true,
   credit_low_threshold: 80,
@@ -73,18 +76,116 @@ const mockNotifications = {
 };
 
 export default function SettingsPage() {
-  const [user, setUser] = useState(mockUser);
-  const [preferences, setPreferences] = useState(mockPreferences);
-  const [notifications, setNotifications] = useState(mockNotifications);
+  const { user, loading: userLoading, refetch } = useUser();
+  const [displayName, setDisplayName] = useState("");
+  const [email, setEmail] = useState("");
+  const [preferences, setPreferences] = useState<Preferences>(defaultPreferences);
+  const [notifications, setNotifications] = useState<Notifications>(defaultNotifications);
   const [newCustomWord, setNewCustomWord] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [deleteConfirmEmail, setDeleteConfirmEmail] = useState("");
+  const [loading, setLoading] = useState(true);
+
+  const supabase = createClient();
+
+  // Load user data
+  useEffect(() => {
+    if (user) {
+      setDisplayName(user.display_name || "");
+      setEmail(user.email || "");
+    }
+  }, [user]);
+
+  // Load preferences from database
+  useEffect(() => {
+    async function loadPreferences() {
+      if (!user) return;
+
+      try {
+        const { data } = await supabase
+          .from("user_preferences")
+          .select("*")
+          .eq("user_id", user.id)
+          .single();
+
+        if (data) {
+          setPreferences({
+            default_filter_type: data.default_filter_type || "mute",
+            sensitivity_level: data.sensitivity_level || "moderate",
+            custom_words: data.custom_words || [],
+            auto_save_history: data.auto_save_history ?? true,
+            data_retention_days: data.data_retention_days,
+          });
+          setNotifications({
+            billing_alerts: data.billing_alerts ?? true,
+            usage_alerts: data.usage_alerts ?? true,
+            credit_low_threshold: data.credit_low_threshold ?? 80,
+            feature_updates: data.feature_updates ?? true,
+            marketing_emails: data.marketing_emails ?? false,
+          });
+        }
+      } catch (err) {
+        console.error("Error loading preferences:", err);
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    loadPreferences();
+  }, [user, supabase]);
 
   const handleSaveProfile = async () => {
+    if (!user) return;
+
     setIsSaving(true);
-    // TODO: Implement save
-    await new Promise((resolve) => setTimeout(resolve, 1000));
-    setIsSaving(false);
+    try {
+      // Update profile
+      const { error: profileError } = await supabase
+        .from("profiles")
+        .update({ display_name: displayName })
+        .eq("id", user.id);
+
+      if (profileError) throw profileError;
+
+      // Update email if changed
+      if (email !== user.email) {
+        const { error: emailError } = await supabase.auth.updateUser({ email });
+        if (emailError) throw emailError;
+      }
+
+      refetch();
+    } catch (err) {
+      console.error("Error saving profile:", err);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleSavePreferences = async () => {
+    if (!user) return;
+
+    try {
+      const { error } = await supabase
+        .from("user_preferences")
+        .upsert({
+          user_id: user.id,
+          default_filter_type: preferences.default_filter_type,
+          sensitivity_level: preferences.sensitivity_level,
+          custom_words: preferences.custom_words,
+          auto_save_history: preferences.auto_save_history,
+          data_retention_days: preferences.data_retention_days,
+          billing_alerts: notifications.billing_alerts,
+          usage_alerts: notifications.usage_alerts,
+          credit_low_threshold: notifications.credit_low_threshold,
+          feature_updates: notifications.feature_updates,
+          marketing_emails: notifications.marketing_emails,
+        });
+
+      if (error) throw error;
+    } catch (err) {
+      console.error("Error saving preferences:", err);
+    }
   };
 
   const handleAddCustomWord = () => {
@@ -92,23 +193,88 @@ export default function SettingsPage() {
       newCustomWord.trim() &&
       !preferences.custom_words.includes(newCustomWord.trim().toLowerCase())
     ) {
-      setPreferences({
+      const updatedPrefs = {
         ...preferences,
         custom_words: [
           ...preferences.custom_words,
           newCustomWord.trim().toLowerCase(),
         ],
-      });
+      };
+      setPreferences(updatedPrefs);
       setNewCustomWord("");
+      // Auto-save when adding words
+      handleSavePreferences();
     }
   };
 
   const handleRemoveCustomWord = (word: string) => {
-    setPreferences({
+    const updatedPrefs = {
       ...preferences,
       custom_words: preferences.custom_words.filter((w) => w !== word),
-    });
+    };
+    setPreferences(updatedPrefs);
+    // Auto-save when removing words
+    handleSavePreferences();
   };
+
+  const handleExportData = async () => {
+    if (!user) return;
+
+    try {
+      // Fetch all user data
+      const [profileRes, historyRes, prefsRes] = await Promise.all([
+        supabase.from("profiles").select("*").eq("id", user.id).single(),
+        supabase.from("filter_history").select("*").eq("user_id", user.id),
+        supabase.from("user_preferences").select("*").eq("user_id", user.id).single(),
+      ]);
+
+      const exportData = {
+        profile: profileRes.data,
+        filter_history: historyRes.data,
+        preferences: prefsRes.data,
+        exported_at: new Date().toISOString(),
+      };
+
+      const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "safeplay-data-export.json";
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error("Error exporting data:", err);
+    }
+  };
+
+  const handleDeleteAccount = async () => {
+    if (!user || deleteConfirmEmail !== user.email) return;
+
+    try {
+      // Delete user data (cascade will handle related tables)
+      // Then delete auth user
+      const { error } = await supabase.auth.admin.deleteUser(user.id);
+      if (error) {
+        // If admin delete fails, try signing out
+        await supabase.auth.signOut();
+        window.location.href = "/";
+      } else {
+        window.location.href = "/";
+      }
+    } catch (err) {
+      console.error("Error deleting account:", err);
+    }
+  };
+
+  if (userLoading || loading) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  const userName = user?.display_name || user?.email?.split("@")[0] || "User";
 
   return (
     <div className="max-w-3xl mx-auto space-y-8">
@@ -135,9 +301,9 @@ export default function SettingsPage() {
           {/* Avatar */}
           <div className="flex items-center gap-4">
             <Avatar className="w-20 h-20">
-              <AvatarImage src={user.avatar_url || undefined} />
+              <AvatarImage src={user?.avatar_url || undefined} />
               <AvatarFallback className="bg-primary text-white text-xl">
-                {user.name.charAt(0)}
+                {userName.charAt(0).toUpperCase()}
               </AvatarFallback>
             </Avatar>
             <div>
@@ -153,11 +319,12 @@ export default function SettingsPage() {
 
           {/* Name */}
           <div className="space-y-2">
-            <Label htmlFor="name">Full Name</Label>
+            <Label htmlFor="name">Display Name</Label>
             <Input
               id="name"
-              value={user.name}
-              onChange={(e) => setUser({ ...user, name: e.target.value })}
+              value={displayName}
+              onChange={(e) => setDisplayName(e.target.value)}
+              placeholder="Enter your name"
             />
           </div>
 
@@ -167,8 +334,8 @@ export default function SettingsPage() {
             <Input
               id="email"
               type="email"
-              value={user.email}
-              onChange={(e) => setUser({ ...user, email: e.target.value })}
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
             />
           </div>
 
@@ -242,9 +409,10 @@ export default function SettingsPage() {
             <Label>Default Filter Type</Label>
             <div className="grid grid-cols-2 gap-4">
               <button
-                onClick={() =>
-                  setPreferences({ ...preferences, default_filter_type: "mute" })
-                }
+                onClick={() => {
+                  setPreferences({ ...preferences, default_filter_type: "mute" });
+                  handleSavePreferences();
+                }}
                 className={cn(
                   "flex items-center gap-3 p-4 rounded-xl border-2 transition-all",
                   preferences.default_filter_type === "mute"
@@ -270,9 +438,10 @@ export default function SettingsPage() {
                 </div>
               </button>
               <button
-                onClick={() =>
-                  setPreferences({ ...preferences, default_filter_type: "bleep" })
-                }
+                onClick={() => {
+                  setPreferences({ ...preferences, default_filter_type: "bleep" });
+                  handleSavePreferences();
+                }}
                 className={cn(
                   "flex items-center gap-3 p-4 rounded-xl border-2 transition-all",
                   preferences.default_filter_type === "bleep"
@@ -305,9 +474,10 @@ export default function SettingsPage() {
             <Label>Sensitivity Level</Label>
             <Select
               value={preferences.sensitivity_level}
-              onValueChange={(value: "low" | "moderate" | "high") =>
-                setPreferences({ ...preferences, sensitivity_level: value })
-              }
+              onValueChange={(value: "low" | "moderate" | "high") => {
+                setPreferences({ ...preferences, sensitivity_level: value });
+                handleSavePreferences();
+              }}
             >
               <SelectTrigger>
                 <SelectValue />
@@ -375,9 +545,10 @@ export default function SettingsPage() {
             </div>
             <Switch
               checked={preferences.auto_save_history}
-              onCheckedChange={(checked) =>
-                setPreferences({ ...preferences, auto_save_history: checked })
-              }
+              onCheckedChange={(checked) => {
+                setPreferences({ ...preferences, auto_save_history: checked });
+                handleSavePreferences();
+              }}
             />
           </div>
         </CardContent>
@@ -404,9 +575,10 @@ export default function SettingsPage() {
             </div>
             <Switch
               checked={notifications.billing_alerts}
-              onCheckedChange={(checked) =>
-                setNotifications({ ...notifications, billing_alerts: checked })
-              }
+              onCheckedChange={(checked) => {
+                setNotifications({ ...notifications, billing_alerts: checked });
+                handleSavePreferences();
+              }}
             />
           </div>
 
@@ -421,9 +593,10 @@ export default function SettingsPage() {
             </div>
             <Switch
               checked={notifications.usage_alerts}
-              onCheckedChange={(checked) =>
-                setNotifications({ ...notifications, usage_alerts: checked })
-              }
+              onCheckedChange={(checked) => {
+                setNotifications({ ...notifications, usage_alerts: checked });
+                handleSavePreferences();
+              }}
             />
           </div>
 
@@ -438,9 +611,10 @@ export default function SettingsPage() {
             </div>
             <Switch
               checked={notifications.feature_updates}
-              onCheckedChange={(checked) =>
-                setNotifications({ ...notifications, feature_updates: checked })
-              }
+              onCheckedChange={(checked) => {
+                setNotifications({ ...notifications, feature_updates: checked });
+                handleSavePreferences();
+              }}
             />
           </div>
 
@@ -455,9 +629,10 @@ export default function SettingsPage() {
             </div>
             <Switch
               checked={notifications.marketing_emails}
-              onCheckedChange={(checked) =>
-                setNotifications({ ...notifications, marketing_emails: checked })
-              }
+              onCheckedChange={(checked) => {
+                setNotifications({ ...notifications, marketing_emails: checked });
+                handleSavePreferences();
+              }}
             />
           </div>
         </CardContent>
@@ -482,13 +657,14 @@ export default function SettingsPage() {
               How long to keep your video history.
             </p>
             <Select
-              value={String(preferences.data_retention_days)}
-              onValueChange={(value) =>
+              value={String(preferences.data_retention_days || "forever")}
+              onValueChange={(value) => {
                 setPreferences({
                   ...preferences,
                   data_retention_days: value === "forever" ? null : Number(value),
-                })
-              }
+                });
+                handleSavePreferences();
+              }}
             >
               <SelectTrigger className="w-full">
                 <SelectValue />
@@ -510,7 +686,7 @@ export default function SettingsPage() {
                 Download all your data in JSON format.
               </p>
             </div>
-            <Button variant="outline" size="sm">
+            <Button variant="outline" size="sm" onClick={handleExportData}>
               <Download className="w-4 h-4 mr-2" />
               Export
             </Button>
@@ -566,9 +742,14 @@ export default function SettingsPage() {
 
             <div className="mt-4 space-y-2">
               <Label htmlFor="confirm-email">
-                Type your email to confirm: <strong>{user.email}</strong>
+                Type your email to confirm: <strong>{user?.email}</strong>
               </Label>
-              <Input id="confirm-email" placeholder="Enter your email" />
+              <Input
+                id="confirm-email"
+                placeholder="Enter your email"
+                value={deleteConfirmEmail}
+                onChange={(e) => setDeleteConfirmEmail(e.target.value)}
+              />
             </div>
           </div>
 
@@ -576,7 +757,13 @@ export default function SettingsPage() {
             <Button variant="outline" onClick={() => setShowDeleteDialog(false)}>
               Cancel
             </Button>
-            <Button variant="destructive">Delete Account</Button>
+            <Button
+              variant="destructive"
+              disabled={deleteConfirmEmail !== user?.email}
+              onClick={handleDeleteAccount}
+            >
+              Delete Account
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

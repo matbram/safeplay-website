@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
@@ -14,74 +15,128 @@ import {
   Zap,
   Calendar,
   RefreshCw,
+  Loader2,
 } from "lucide-react";
 import { formatDuration, formatDate } from "@/lib/utils";
+import { useUser } from "@/contexts/user-context";
+import { createClient } from "@/lib/supabase/client";
 
-// Mock data - replace with actual data from API
-const mockData = {
-  credits: {
-    available: 705,
-    total: 750,
-    used: 45,
-    rollover: 320,
-    expiringSoon: 45,
-    expiringDays: 60,
-    periodEnd: new Date(Date.now() + 12 * 24 * 60 * 60 * 1000),
-  },
-  stats: {
-    totalVideos: 47,
-    totalMinutes: 823,
-    thisMonth: 12,
-  },
-  recentVideos: [
-    {
-      id: "1",
-      title: "Amazing Nature Documentary - Episode 5",
-      thumbnail: "/placeholder-video.jpg",
-      duration: 2732,
-      filteredAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000),
-      credits: 46,
-      filterType: "mute",
-    },
-    {
-      id: "2",
-      title: "Cooking with Gordon - Perfect Steak",
-      thumbnail: "/placeholder-video.jpg",
-      duration: 735,
-      filteredAt: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000),
-      credits: 13,
-      filterType: "bleep",
-    },
-    {
-      id: "3",
-      title: "Tech Review: Latest Gadgets 2026",
-      thumbnail: "/placeholder-video.jpg",
-      duration: 1824,
-      filteredAt: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000),
-      credits: 31,
-      filterType: "mute",
-    },
-  ],
-  plan: {
-    name: "Individual",
-    price: 9.99,
-  },
+const planNames: Record<string, string> = {
+  free: "Free",
+  individual: "Individual",
+  family: "Family",
+  organization: "Organization",
 };
 
+const planQuotas: Record<string, number> = {
+  free: 30,
+  individual: 750,
+  family: 1500,
+  organization: 3750,
+};
+
+interface FilterHistoryItem {
+  id: string;
+  video_id: string;
+  filter_type: string;
+  credits_used: number;
+  created_at: string;
+  videos: {
+    title: string;
+    youtube_id: string;
+    duration_seconds: number;
+    thumbnail_url: string | null;
+  };
+}
+
 export default function DashboardPage() {
-  const creditPercentage = Math.round(
-    (mockData.credits.used / mockData.credits.total) * 100
-  );
-  const daysUntilReset = Math.ceil(
-    (mockData.credits.periodEnd.getTime() - Date.now()) / (1000 * 60 * 60 * 24)
-  );
+  const { user, credits, loading } = useUser();
+  const [recentVideos, setRecentVideos] = useState<FilterHistoryItem[]>([]);
+  const [stats, setStats] = useState({ totalVideos: 0, totalMinutes: 0, thisMonth: 0 });
+  const [loadingHistory, setLoadingHistory] = useState(true);
+
+  const supabase = createClient();
+
+  useEffect(() => {
+    async function fetchHistory() {
+      if (!supabase || !user) return;
+
+      try {
+        // Fetch recent filter history with video details
+        const { data: history, error } = await supabase
+          .from("filter_history")
+          .select(`
+            id,
+            video_id,
+            filter_type,
+            credits_used,
+            created_at,
+            videos (
+              title,
+              youtube_id,
+              duration_seconds,
+              thumbnail_url
+            )
+          `)
+          .eq("user_id", user.id)
+          .order("created_at", { ascending: false })
+          .limit(5);
+
+        if (!error && history) {
+          setRecentVideos(history as unknown as FilterHistoryItem[]);
+
+          // Calculate stats
+          const thisMonth = new Date();
+          thisMonth.setDate(1);
+          thisMonth.setHours(0, 0, 0, 0);
+
+          const totalVideos = history.length;
+          const totalMinutes = history.reduce((acc: number, h: { videos?: { duration_seconds?: number } }) => {
+            const duration = h.videos?.duration_seconds || 0;
+            return acc + Math.ceil(duration / 60);
+          }, 0);
+          const thisMonthCount = history.filter(
+            (h: { created_at: string }) => new Date(h.created_at) >= thisMonth
+          ).length;
+
+          setStats({ totalVideos, totalMinutes, thisMonth: thisMonthCount });
+        }
+      } catch (err) {
+        console.error("Error fetching history:", err);
+      } finally {
+        setLoadingHistory(false);
+      }
+    }
+
+    fetchHistory();
+  }, [supabase, user]);
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  const planTier = user?.subscription_tier || "free";
+  const totalCredits = planQuotas[planTier] || 30;
+  const availableCredits = credits?.available_credits || 0;
+  const usedCredits = credits?.used_this_period || 0;
+  const rolloverCredits = credits?.rollover_credits || 0;
+  const creditPercentage = totalCredits > 0 ? Math.round((usedCredits / totalCredits) * 100) : 0;
+
+  const periodEnd = credits?.period_end ? new Date(credits.period_end) : new Date();
+  const daysUntilReset = Math.max(0, Math.ceil((periodEnd.getTime() - Date.now()) / (1000 * 60 * 60 * 24)));
+
+  const userName = user?.display_name || user?.email?.split("@")[0] || "there";
 
   return (
     <div className="space-y-8">
       {/* Welcome Section */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">Welcome back, John!</h1>
+          <h1 className="text-2xl font-bold text-foreground">Welcome back, {userName}!</h1>
           <p className="text-muted-foreground">
             Here&apos;s what&apos;s happening with your account.
           </p>
@@ -102,7 +157,7 @@ export default function DashboardPage() {
             <div className="flex items-center justify-between">
               <CardTitle className="text-base font-medium">Credit Usage</CardTitle>
               <Badge variant="outline" className="font-normal">
-                {mockData.plan.name} Plan
+                {planNames[planTier]} Plan
               </Badge>
             </div>
           </CardHeader>
@@ -110,10 +165,10 @@ export default function DashboardPage() {
             <div className="flex items-end justify-between">
               <div>
                 <p className="text-3xl font-bold">
-                  {mockData.credits.available}
+                  {availableCredits}
                   <span className="text-lg font-normal text-muted-foreground">
                     {" "}
-                    / {mockData.credits.total}
+                    / {totalCredits}
                   </span>
                 </p>
                 <p className="text-sm text-muted-foreground">
@@ -133,7 +188,7 @@ export default function DashboardPage() {
               <div className="flex items-center gap-2">
                 <RefreshCw className="w-4 h-4 text-muted-foreground" />
                 <div>
-                  <p className="text-sm font-medium">{mockData.credits.rollover}</p>
+                  <p className="text-sm font-medium">{rolloverCredits}</p>
                   <p className="text-xs text-muted-foreground">Rollover credits</p>
                 </div>
               </div>
@@ -157,9 +212,9 @@ export default function DashboardPage() {
             <div className="flex items-center gap-2">
               <Film className="w-8 h-8 text-primary" />
               <div>
-                <p className="text-3xl font-bold">{mockData.stats.totalVideos}</p>
+                <p className="text-3xl font-bold">{stats.totalVideos}</p>
                 <p className="text-xs text-muted-foreground">
-                  {mockData.stats.thisMonth} this month
+                  {stats.thisMonth} this month
                 </p>
               </div>
             </div>
@@ -175,9 +230,9 @@ export default function DashboardPage() {
             <div className="flex items-center gap-2">
               <Clock className="w-8 h-8 text-secondary" />
               <div>
-                <p className="text-3xl font-bold">{mockData.stats.totalMinutes}</p>
+                <p className="text-3xl font-bold">{stats.totalMinutes}</p>
                 <p className="text-xs text-muted-foreground">
-                  {formatDuration(mockData.stats.totalMinutes * 60)} total
+                  {stats.totalMinutes > 0 ? formatDuration(stats.totalMinutes * 60) : "0 min"} total
                 </p>
               </div>
             </div>
@@ -197,43 +252,67 @@ export default function DashboardPage() {
           </Button>
         </CardHeader>
         <CardContent>
-          <div className="space-y-4">
-            {mockData.recentVideos.map((video) => (
-              <div
-                key={video.id}
-                className="flex items-center gap-4 p-3 rounded-lg hover:bg-accent transition-colors"
-              >
-                {/* Thumbnail */}
-                <div className="relative w-24 h-14 bg-muted rounded-lg overflow-hidden flex-shrink-0">
-                  <div className="absolute inset-0 flex items-center justify-center">
-                    <Play className="w-6 h-6 text-muted-foreground" />
+          {loadingHistory ? (
+            <div className="flex items-center justify-center py-8">
+              <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+            </div>
+          ) : recentVideos.length === 0 ? (
+            <div className="text-center py-8">
+              <Film className="w-12 h-12 mx-auto text-muted-foreground mb-3" />
+              <p className="text-muted-foreground">No videos filtered yet</p>
+              <Button asChild className="mt-4">
+                <Link href="/filter">Filter your first video</Link>
+              </Button>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {recentVideos.map((video) => (
+                <div
+                  key={video.id}
+                  className="flex items-center gap-4 p-3 rounded-lg hover:bg-accent transition-colors"
+                >
+                  {/* Thumbnail */}
+                  <div className="relative w-24 h-14 bg-muted rounded-lg overflow-hidden flex-shrink-0">
+                    {video.videos?.thumbnail_url ? (
+                      <img
+                        src={video.videos.thumbnail_url}
+                        alt={video.videos.title}
+                        className="absolute inset-0 w-full h-full object-cover"
+                      />
+                    ) : (
+                      <div className="absolute inset-0 flex items-center justify-center">
+                        <Play className="w-6 h-6 text-muted-foreground" />
+                      </div>
+                    )}
+                    <div className="absolute bottom-1 right-1 px-1.5 py-0.5 rounded bg-black/70 text-white text-xs">
+                      {formatDuration(video.videos?.duration_seconds || 0)}
+                    </div>
                   </div>
-                  <div className="absolute bottom-1 right-1 px-1.5 py-0.5 rounded bg-black/70 text-white text-xs">
-                    {formatDuration(video.duration)}
-                  </div>
-                </div>
 
-                {/* Info */}
-                <div className="flex-1 min-w-0">
-                  <p className="font-medium truncate">{video.title}</p>
-                  <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
-                    <span>{formatDate(video.filteredAt)}</span>
-                    <span>-</span>
-                    <span>{video.credits} credits</span>
-                    <Badge variant="muted" className="text-xs capitalize">
-                      {video.filterType}
-                    </Badge>
+                  {/* Info */}
+                  <div className="flex-1 min-w-0">
+                    <p className="font-medium truncate">{video.videos?.title || "Untitled Video"}</p>
+                    <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
+                      <span>{formatDate(new Date(video.created_at))}</span>
+                      <span>-</span>
+                      <span>{video.credits_used} credits</span>
+                      <Badge variant="muted" className="text-xs capitalize">
+                        {video.filter_type}
+                      </Badge>
+                    </div>
                   </div>
-                </div>
 
-                {/* Action */}
-                <Button variant="ghost" size="sm">
-                  <Play className="w-4 h-4 mr-1" />
-                  Rewatch
-                </Button>
-              </div>
-            ))}
-          </div>
+                  {/* Action */}
+                  <Button variant="ghost" size="sm" asChild>
+                    <Link href={`https://youtube.com/watch?v=${video.videos?.youtube_id}`} target="_blank">
+                      <Play className="w-4 h-4 mr-1" />
+                      Rewatch
+                    </Link>
+                  </Button>
+                </div>
+              ))}
+            </div>
+          )}
         </CardContent>
       </Card>
 

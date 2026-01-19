@@ -22,9 +22,9 @@ const steps = [
   {
     number: "3",
     icon: Sparkles,
-    title: "AI Processes",
+    title: "Smart Processing",
     description:
-      "Our AI analyzes the audio in seconds, identifying profanity with 99.5% accuracy.",
+      "Our system analyzes the audio in seconds, identifying profanity with 99.5% accuracy.",
     color: "bg-amber-500",
   },
   {

@@ -1,0 +1,249 @@
+import { NextRequest, NextResponse } from "next/server";
+import { createClient } from "@/lib/supabase/server";
+import { authenticateRequest } from "@/lib/auth-helper";
+
+const ORCHESTRATOR_URL = process.env.ORCHESTRATION_API_URL || "https://safeplay-orchestrator-production.up.railway.app";
+const ORCHESTRATOR_API_KEY = process.env.ORCHESTRATION_API_KEY;
+
+export async function POST(request: NextRequest) {
+  try {
+    // Authenticate via session cookie or bearer token
+    const auth = await authenticateRequest(request);
+
+    if (!auth.user) {
+      return NextResponse.json(
+        { error: auth.error || "Unauthorized" },
+        { status: 401 }
+      );
+    }
+
+    const supabase = await createClient();
+    const { youtube_id, filter_type, custom_words } = await request.json();
+
+    if (!youtube_id) {
+      return NextResponse.json(
+        { error: "YouTube ID is required" },
+        { status: 400 }
+      );
+    }
+
+    // Check if video is already cached in OUR database (free to rewatch)
+    const { data: cachedVideo } = await supabase
+      .from("videos")
+      .select("*")
+      .eq("youtube_id", youtube_id)
+      .single();
+
+    if (cachedVideo && cachedVideo.transcript) {
+      // Video already transcribed in our DB - free to rewatch
+      // Record in filter history (no credits charged)
+      const { data: historyEntry, error: historyError } = await supabase
+        .from("filter_history")
+        .insert({
+          user_id: auth.user.id,
+          video_id: cachedVideo.id,
+          filter_type: filter_type || "mute",
+          custom_words: custom_words || [],
+          credits_used: 0,
+        })
+        .select()
+        .single();
+
+      if (historyError) {
+        console.error("Error saving history:", historyError);
+      }
+
+      return NextResponse.json({
+        status: "completed",
+        cached: true,
+        transcript: cachedVideo.transcript,
+        video: {
+          youtube_id: cachedVideo.youtube_id,
+          title: cachedVideo.title,
+          channel_name: cachedVideo.channel_name,
+          duration_seconds: cachedVideo.duration_seconds,
+          thumbnail_url: cachedVideo.thumbnail_url,
+        },
+        history_id: historyEntry?.id,
+        credits_used: 0,
+      });
+    }
+
+    // Video not in our cache - call orchestrator to start filtering
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+    };
+
+    if (ORCHESTRATOR_API_KEY) {
+      headers["Authorization"] = `Bearer ${ORCHESTRATOR_API_KEY}`;
+    }
+
+    const response = await fetch(`${ORCHESTRATOR_URL}/api/filter`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ youtube_id }),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      return NextResponse.json(
+        { error: data.error || "Failed to start filtering", error_code: data.error_code },
+        { status: response.status }
+      );
+    }
+
+    // If orchestrator has it cached and returns completed immediately
+    if (data.status === "completed" && data.transcript) {
+      const durationSeconds = data.transcript.duration || 0;
+      const creditCost = calculateCreditCost(durationSeconds);
+
+      // Check user's credit balance
+      const { data: creditBalance } = await supabase
+        .from("credit_balances")
+        .select("*")
+        .eq("user_id", auth.user.id)
+        .single();
+
+      const availableCredits = creditBalance?.available_credits || 0;
+
+      if (creditCost > availableCredits) {
+        return NextResponse.json(
+          {
+            error: "Insufficient credits",
+            error_code: "INSUFFICIENT_CREDITS",
+            required: creditCost,
+            available: availableCredits,
+          },
+          { status: 400 }
+        );
+      }
+
+      // Deduct credits
+      const newBalance = availableCredits - creditCost;
+      const newUsed = (creditBalance?.used_this_period || 0) + creditCost;
+
+      const { error: creditUpdateError } = await supabase
+        .from("credit_balances")
+        .update({
+          available_credits: newBalance,
+          used_this_period: newUsed,
+        })
+        .eq("user_id", auth.user.id);
+
+      if (creditUpdateError) {
+        console.error("Error updating credits:", creditUpdateError);
+      }
+
+      // Record credit transaction
+      const { error: txError } = await supabase.from("credit_transactions").insert({
+        user_id: auth.user.id,
+        amount: -creditCost,
+        balance_after: newBalance,
+        type: "filter",
+        description: `Filtered video: ${data.video?.title || youtube_id}`,
+      });
+
+      if (txError) {
+        console.error("Error recording transaction:", txError);
+      }
+
+      // Cache video in our database
+      const { data: videoRecord, error: videoError } = await supabase
+        .from("videos")
+        .upsert({
+          youtube_id: youtube_id,
+          title: data.video?.title || data.transcript.title || "Unknown Video",
+          channel_name: data.video?.channel_name || null,
+          duration_seconds: durationSeconds,
+          thumbnail_url: `https://img.youtube.com/vi/${youtube_id}/maxresdefault.jpg`,
+          transcript: data.transcript,
+          cached_at: new Date().toISOString(),
+        })
+        .select()
+        .single();
+
+      if (videoError) {
+        console.error("Error caching video:", videoError);
+      }
+
+      // Record in filter history
+      const { data: historyEntry, error: historyError } = await supabase
+        .from("filter_history")
+        .insert({
+          user_id: auth.user.id,
+          video_id: videoRecord?.id,
+          filter_type: filter_type || "mute",
+          custom_words: custom_words || [],
+          credits_used: creditCost,
+        })
+        .select()
+        .single();
+
+      if (historyError) {
+        console.error("Error saving history:", historyError);
+      }
+
+      return NextResponse.json({
+        status: "completed",
+        cached: true,
+        transcript: data.transcript,
+        video: {
+          youtube_id: youtube_id,
+          title: data.video?.title || data.transcript.title || "Unknown Video",
+          channel_name: data.video?.channel_name || null,
+          duration_seconds: durationSeconds,
+          thumbnail_url: `https://img.youtube.com/vi/${youtube_id}/maxresdefault.jpg`,
+        },
+        history_id: historyEntry?.id,
+        credits_used: creditCost,
+      });
+    }
+
+    // Processing started - save job and return job ID for polling
+    if (data.status === "processing" && data.job_id) {
+      const { error: jobError } = await supabase.from("filter_jobs").upsert({
+        job_id: data.job_id,
+        user_id: auth.user.id,
+        youtube_id: youtube_id,
+        filter_type: filter_type || "mute",
+        custom_words: custom_words || [],
+        status: "processing",
+        created_at: new Date().toISOString(),
+      });
+
+      if (jobError) {
+        console.error("Error saving job:", jobError);
+      }
+
+      return NextResponse.json({
+        status: "processing",
+        job_id: data.job_id,
+        youtube_id: youtube_id,
+        message: "Video processing started",
+      });
+    }
+
+    // Handle failed status
+    if (data.status === "failed") {
+      return NextResponse.json(
+        { error: data.error || "Failed to process video", error_code: data.error_code },
+        { status: 400 }
+      );
+    }
+
+    return NextResponse.json(data);
+  } catch (error) {
+    console.error("Filter start error:", error);
+    return NextResponse.json(
+      { error: "Failed to start filtering" },
+      { status: 500 }
+    );
+  }
+}
+
+function calculateCreditCost(durationSeconds: number): number {
+  // 1 credit per minute of video, minimum 1 credit
+  const minutes = Math.ceil(durationSeconds / 60);
+  return Math.max(1, minutes);
+}

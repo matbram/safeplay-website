@@ -109,3 +109,52 @@ export function getPlanByPriceId(priceId: string): (typeof PLANS)[PlanId] | null
   }
   return null;
 }
+
+// Credit top-up packs - priced at 1.5x the subscription rate
+// Subscription: $9.99 = 750 credits (~$0.0133/credit)
+// Top-up: ~$0.02/credit (1.5x markup)
+export const CREDIT_PACKS = {
+  pack_250: {
+    id: "pack_250",
+    credits: 250,
+    price_cents: 499,
+    name: "250 Credits",
+    stripe_price_id: process.env.STRIPE_PRICE_PACK_250,
+  },
+  pack_500: {
+    id: "pack_500",
+    credits: 500,
+    price_cents: 999,
+    name: "500 Credits",
+    stripe_price_id: process.env.STRIPE_PRICE_PACK_500,
+  },
+  pack_1000: {
+    id: "pack_1000",
+    credits: 1000,
+    price_cents: 1999,
+    name: "1000 Credits",
+    stripe_price_id: process.env.STRIPE_PRICE_PACK_1000,
+  },
+  pack_2500: {
+    id: "pack_2500",
+    credits: 2500,
+    price_cents: 4999,
+    name: "2500 Credits",
+    stripe_price_id: process.env.STRIPE_PRICE_PACK_2500,
+  },
+} as const;
+
+export type CreditPackId = keyof typeof CREDIT_PACKS;
+
+export function getCreditPackById(packId: string): (typeof CREDIT_PACKS)[CreditPackId] | null {
+  return CREDIT_PACKS[packId as CreditPackId] || null;
+}
+
+export function getCreditPackByPriceId(priceId: string): (typeof CREDIT_PACKS)[CreditPackId] | null {
+  for (const pack of Object.values(CREDIT_PACKS)) {
+    if (pack.stripe_price_id === priceId) {
+      return pack;
+    }
+  }
+  return null;
+}

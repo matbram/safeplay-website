@@ -19,6 +19,7 @@ import {
   ArrowRight,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { createClient } from "@/lib/supabase/client";
 
 const plans = [
   {
@@ -60,6 +61,7 @@ function SignupForm() {
   const [step, setStep] = useState(1);
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [isGoogleLoading, setIsGoogleLoading] = useState(false);
   const [formData, setFormData] = useState({
     name: "",
     email: "",
@@ -68,6 +70,10 @@ function SignupForm() {
     agreeToTerms: false,
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [generalError, setGeneralError] = useState("");
+  const [emailSent, setEmailSent] = useState(false);
+
+  const supabase = createClient();
 
   const validateStep1 = () => {
     const newErrors: Record<string, string> = {};
@@ -94,6 +100,34 @@ function SignupForm() {
     }
   };
 
+  const handleGoogleSignup = async () => {
+    setIsGoogleLoading(true);
+    setGeneralError("");
+
+    try {
+      if (!supabase) {
+        setGeneralError("Unable to connect. Please refresh the page.");
+        setIsGoogleLoading(false);
+        return;
+      }
+
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: "google",
+        options: {
+          redirectTo: `${window.location.origin}/api/auth/callback?next=/dashboard`,
+        },
+      });
+
+      if (error) {
+        setGeneralError(error.message);
+        setIsGoogleLoading(false);
+      }
+    } catch (error) {
+      setGeneralError("Failed to connect to Google. Please try again.");
+      setIsGoogleLoading(false);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -104,20 +138,98 @@ function SignupForm() {
 
     setIsLoading(true);
     setErrors({});
+    setGeneralError("");
 
-    // TODO: Implement actual signup with Supabase
-    // Simulate API call
-    await new Promise((resolve) => setTimeout(resolve, 1500));
+    try {
+      if (!supabase) {
+        setGeneralError("Unable to connect. Please refresh the page.");
+        setIsLoading(false);
+        return;
+      }
 
-    // Redirect to dashboard or checkout based on plan
-    if (formData.plan !== "free") {
-      // Redirect to Stripe checkout
-      router.push(`/checkout?plan=${formData.plan}`);
-    } else {
-      // Redirect to dashboard
-      router.push("/dashboard?welcome=true");
+      // Sign up with Supabase
+      const { data, error } = await supabase.auth.signUp({
+        email: formData.email,
+        password: formData.password,
+        options: {
+          data: {
+            full_name: formData.name,
+          },
+          emailRedirectTo: `${window.location.origin}/api/auth/callback?next=/dashboard`,
+        },
+      });
+
+      if (error) {
+        if (error.message.includes("already registered")) {
+          setGeneralError("An account with this email already exists. Please sign in instead.");
+        } else {
+          setGeneralError(error.message);
+        }
+        setIsLoading(false);
+        return;
+      }
+
+      // Check if email confirmation is required
+      if (data.user && !data.session) {
+        setEmailSent(true);
+        setIsLoading(false);
+        return;
+      }
+
+      // If signed in immediately, handle plan selection
+      if (formData.plan !== "free" && data.session) {
+        // Redirect to Stripe checkout for paid plans
+        router.push(`/billing?upgrade=${formData.plan}`);
+      } else {
+        // Redirect to dashboard for free plan
+        router.push("/dashboard?welcome=true");
+        router.refresh();
+      }
+    } catch (error) {
+      setGeneralError("An unexpected error occurred. Please try again.");
+      setIsLoading(false);
     }
   };
+
+  // Show email confirmation message
+  if (emailSent) {
+    return (
+      <div className="w-full max-w-md space-y-8">
+        <div className="flex flex-col items-center">
+          <Link href="/" className="flex items-center gap-2 mb-8">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary">
+              <Shield className="h-6 w-6 text-white" />
+            </div>
+            <span className="text-2xl font-bold text-foreground">SafePlay</span>
+          </Link>
+
+          <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center mb-6">
+            <Mail className="w-8 h-8 text-primary" />
+          </div>
+
+          <h1 className="text-2xl font-bold text-foreground text-center">
+            Check your email
+          </h1>
+          <p className="mt-4 text-sm text-muted-foreground text-center max-w-sm">
+            We&apos;ve sent a confirmation link to <strong className="text-foreground">{formData.email}</strong>.
+            Click the link in the email to verify your account.
+          </p>
+
+          <div className="mt-8 p-4 rounded-xl bg-muted/50 border border-border w-full">
+            <p className="text-sm text-muted-foreground">
+              Didn&apos;t receive the email? Check your spam folder or{" "}
+              <button
+                onClick={() => setEmailSent(false)}
+                className="text-primary hover:underline"
+              >
+                try again with a different email
+              </button>
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="w-full max-w-md space-y-8">
@@ -138,6 +250,13 @@ function SignupForm() {
             : "Select the plan that works best for you"}
         </p>
       </div>
+
+      {/* General Error */}
+      {generalError && (
+        <div className="p-4 rounded-lg bg-destructive/10 border border-destructive/20 text-destructive text-sm">
+          {generalError}
+        </div>
+      )}
 
       {/* Progress Steps */}
       <div className="flex items-center justify-center gap-2">
@@ -252,7 +371,14 @@ function SignupForm() {
           </div>
 
           {/* Social Login */}
-          <Button variant="outline" className="w-full" size="lg" type="button">
+          <Button
+            variant="outline"
+            className="w-full"
+            size="lg"
+            type="button"
+            onClick={handleGoogleSignup}
+            loading={isGoogleLoading}
+          >
             <svg className="w-5 h-5 mr-2" viewBox="0 0 24 24">
               <path
                 fill="currentColor"

@@ -16,7 +16,7 @@ const plans = [
     features: [
       { text: "30 minutes of filtering", included: true },
       { text: "Mute or bleep options", included: true },
-      { text: "Access cached videos", included: true },
+      { text: "Re-watch filtered videos free", included: true },
       { text: "Custom word filters", included: false },
       { text: "Family profiles", included: false },
       { text: "Priority support", included: false },
@@ -37,7 +37,7 @@ const plans = [
     features: [
       { text: "750 minutes of filtering", included: true },
       { text: "Mute or bleep options", included: true },
-      { text: "Access cached videos", included: true },
+      { text: "Re-watch filtered videos free", included: true },
       { text: "Custom word filters", included: true },
       { text: "Up to 3 profiles", included: true },
       { text: "Email support", included: true },
@@ -58,7 +58,7 @@ const plans = [
     features: [
       { text: "1,500 minutes of filtering", included: true },
       { text: "Mute or bleep options", included: true },
-      { text: "Access cached videos", included: true },
+      { text: "Re-watch filtered videos free", included: true },
       { text: "Custom word filters", included: true },
       { text: "Up to 10 profiles", included: true },
       { text: "Parental controls", included: true },
@@ -79,7 +79,7 @@ const plans = [
     features: [
       { text: "3,750 minutes of filtering", included: true },
       { text: "Mute or bleep options", included: true },
-      { text: "Access cached videos", included: true },
+      { text: "Re-watch filtered videos free", included: true },
       { text: "Custom word filters", included: true },
       { text: "Unlimited members", included: true },
       { text: "Admin dashboard & priority support", included: true },
@@ -106,10 +106,14 @@ export function Pricing() {
           </p>
 
           {/* Credit explanation */}
-          <div className="mt-6 inline-flex items-center gap-2 px-4 py-2 rounded-full bg-muted text-sm text-muted-foreground">
+          <Link
+            href="/credits"
+            className="mt-6 inline-flex items-center gap-2 px-4 py-2 rounded-full bg-muted text-sm text-muted-foreground hover:bg-primary/10 hover:text-primary transition-colors"
+          >
             <span className="w-2 h-2 rounded-full bg-primary" />
             1 credit = 1 minute of video filtering
-          </div>
+            <span className="text-primary font-medium">Learn more →</span>
+          </Link>
         </div>
 
         {/* Pricing Cards */}

@@ -5,8 +5,8 @@ const footerLinks = {
   product: [
     { name: "Features", href: "/features" },
     { name: "Pricing", href: "/pricing" },
+    { name: "How Credits Work", href: "/credits" },
     { name: "Chrome Extension", href: "/extension" },
-    { name: "How It Works", href: "/how-it-works" },
   ],
   company: [
     { name: "About", href: "/about" },
@@ -41,7 +41,7 @@ export function Footer() {
               <span className="text-xl font-bold">SafePlay</span>
             </Link>
             <p className="mt-4 text-sm text-muted-foreground max-w-xs">
-              Clean YouTube viewing for the whole family. Filter profanity automatically with AI-powered precision.
+              Clean YouTube viewing for the whole family. Filter profanity automatically with pinpoint precision.
             </p>
           </div>
 
