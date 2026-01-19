@@ -26,7 +26,14 @@ export async function authenticateRequest(request: NextRequest): Promise<AuthRes
     return authenticateWithToken(token);
   }
 
-  console.log("Auth: Using session-based authentication");
+  // No Authorization header - fall back to session-based auth (website)
+  if (authHeader) {
+    // Has auth header but not Bearer format
+    console.log("Auth: Invalid Authorization header format:", authHeader.substring(0, 20));
+    return { user: null, error: "Invalid authorization format. Use: Bearer <token>", supabase: null };
+  }
+
+  console.log("Auth: Using session-based authentication (no Authorization header)");
   // Fall back to session-based auth (website)
   return authenticateWithSession();
 }
