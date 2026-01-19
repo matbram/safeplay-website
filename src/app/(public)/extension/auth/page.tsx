@@ -76,10 +76,12 @@ export default function ExtensionAuthPage() {
 
         setMessage('Sending credentials to extension...');
 
-        // Send to extension
+        // Send to extension - include refresh_token for token renewal
         window.chrome!.runtime!.sendMessage(extensionId, {
           type: 'AUTH_TOKEN',
           token: session.access_token,
+          refreshToken: session.refresh_token, // For refreshing expired tokens
+          expiresAt: session.expires_at, // Unix timestamp when token expires
           userId: session.user.id,
           tier: profileData.subscription?.plans?.name?.toLowerCase() || 'free',
           user: profileData.user,
