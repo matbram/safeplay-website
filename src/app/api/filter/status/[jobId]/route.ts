@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
 import { authenticateRequest } from "@/lib/auth-helper";
+import { fetchYouTubeDuration } from "@/lib/youtube";
 
 const ORCHESTRATOR_URL = process.env.ORCHESTRATION_API_URL || "https://safeplay-orchestrator-production.up.railway.app";
 const ORCHESTRATOR_API_KEY = process.env.ORCHESTRATION_API_KEY;
@@ -152,7 +153,22 @@ export async function GET(
     if (data.status === "completed" && data.transcript) {
       log(requestId, "=== Job completed - finalizing ===");
 
-      const durationSeconds = data.transcript.duration || 0;
+      // Try to get duration from multiple possible locations in orchestrator response
+      let durationSeconds = data.transcript?.duration || data.video?.duration || data.duration || 0;
+      log(requestId, "Duration from orchestrator", {
+        transcriptDuration: data.transcript?.duration,
+        videoDuration: data.video?.duration,
+        topLevelDuration: data.duration,
+        result: durationSeconds
+      });
+
+      // If orchestrator didn't provide duration, fetch from YouTube
+      if (durationSeconds === 0 && jobRecord.youtube_id) {
+        log(requestId, "Fetching duration from YouTube", { youtubeId: jobRecord.youtube_id });
+        durationSeconds = await fetchYouTubeDuration(jobRecord.youtube_id);
+        log(requestId, "YouTube duration result", { durationSeconds });
+      }
+
       const creditCost = calculateCreditCost(durationSeconds);
       log(requestId, "Credit calculation", { durationSeconds, creditCost });
 

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { authenticateRequest } from "@/lib/auth-helper";
+import { fetchYouTubeVideoInfo } from "@/lib/youtube";
 
 // Calculate credit cost: 1 credit per minute, minimum 1 credit
 // Round at 30 seconds (Math.round rounds at 0.5 = 30 seconds)
@@ -11,6 +12,8 @@ function calculateCreditCost(durationSeconds: number): number {
 }
 
 // Extract JSON object from string starting at given position
+// NOTE: This is duplicated from @/lib/youtube for backward compatibility
+// TODO: Remove once verified the shared utility works
 function extractJsonObject(str: string, startIndex: number): string | null {
   let braceCount = 0;
   let inString = false;
