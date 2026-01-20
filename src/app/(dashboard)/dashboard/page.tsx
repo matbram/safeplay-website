@@ -91,17 +91,17 @@ export default function DashboardPage() {
           count: history?.length,
           error: error?.message,
           errorCode: error?.code,
-          items: history?.map(h => ({
+          items: history?.map((h: { id: string; video_id: string; videos: { title?: string } | null }) => ({
             id: h.id,
             video_id: h.video_id,
             hasVideo: !!h.videos,
-            title: (h.videos as { title?: string } | null)?.title
+            title: h.videos?.title
           }))
         });
 
         if (!error && history) {
           // Filter out items with missing video data
-          const validHistory = history.filter(h => h.video_id !== null);
+          const validHistory = history.filter((h: { video_id: string | null }) => h.video_id !== null);
           console.log("[Dashboard] Valid items:", validHistory.length, "of", history.length);
           setRecentVideos(validHistory as unknown as FilterHistoryItem[]);
 
