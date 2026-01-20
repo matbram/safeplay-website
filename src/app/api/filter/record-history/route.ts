@@ -13,6 +13,30 @@ function log(requestId: string, message: string, data?: Record<string, unknown>)
 }
 
 /**
+ * Fetch video metadata from YouTube's oEmbed API (no API key required)
+ */
+async function fetchYouTubeMetadata(youtubeId: string): Promise<{ title?: string; author_name?: string } | null> {
+  try {
+    const url = `https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${youtubeId}&format=json`;
+    const response = await fetch(url, {
+      signal: AbortSignal.timeout(3000) // 3 second timeout
+    });
+
+    if (!response.ok) {
+      return null;
+    }
+
+    const data = await response.json();
+    return {
+      title: data.title,
+      author_name: data.author_name,
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
  * POST /api/filter/record-history
  *
  * Records filter history for videos served from extension's local cache.
@@ -72,19 +96,41 @@ export async function POST(request: NextRequest) {
       .single();
 
     let videoId: string;
+    let videoTitle = title;
+    let videoChannel = channel_name;
+
+    // If no title provided, try to fetch from YouTube
+    if (!videoTitle) {
+      log(requestId, "No title provided, fetching from YouTube");
+      const ytMeta = await fetchYouTubeMetadata(youtube_id);
+      if (ytMeta) {
+        videoTitle = ytMeta.title;
+        videoChannel = videoChannel || ytMeta.author_name;
+        log(requestId, "Fetched YouTube metadata", { title: videoTitle, channel: videoChannel });
+      }
+    }
 
     if (existingVideo) {
-      // Video already cached
+      // Video already cached - update title if we have a better one
       videoId = existingVideo.id;
-      log(requestId, "Video already cached", { videoId, title: existingVideo.title });
+      log(requestId, "Video already cached", { videoId, existingTitle: existingVideo.title });
+
+      // If existing title is generic and we have a real title, update it
+      if (existingVideo.title === "Unknown Video" && videoTitle && videoTitle !== "Unknown Video") {
+        log(requestId, "Updating video with better title", { newTitle: videoTitle });
+        await supabase
+          .from("videos")
+          .update({ title: videoTitle, channel_name: videoChannel || null })
+          .eq("id", videoId);
+      }
     } else {
       // Insert new video record (without transcript - just metadata)
       const { data: newVideo, error: videoError } = await supabase
         .from("videos")
         .insert({
           youtube_id,
-          title: title || "Unknown Video",
-          channel_name: channel_name || null,
+          title: videoTitle || "Video",
+          channel_name: videoChannel || null,
           duration_seconds: duration_seconds || null,
           thumbnail_url: `https://img.youtube.com/vi/${youtube_id}/maxresdefault.jpg`,
           cached_at: new Date().toISOString(),
@@ -101,7 +147,7 @@ export async function POST(request: NextRequest) {
       }
 
       videoId = newVideo.id;
-      log(requestId, "Created new video record", { videoId });
+      log(requestId, "Created new video record", { videoId, title: videoTitle });
     }
 
     // Check if we already have a history entry for this video today
