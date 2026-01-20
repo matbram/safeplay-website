@@ -15,48 +15,29 @@ export async function GET(request: NextRequest) {
     const status = searchParams.get("status") || "";
     const sortBy = searchParams.get("sortBy") || "created_at";
     const sortOrder = searchParams.get("sortOrder") || "desc";
-    const debug = searchParams.get("debug") === "true";
 
     const offset = (page - 1) * limit;
 
     const supabase = createServiceClient();
 
-    // Debug: Check if service client is working
-    if (debug) {
-      // Try a simple count query
-      const { count: totalCount, error: countError } = await supabase
-        .from("profiles")
-        .select("*", { count: "exact", head: true });
-
-      // Also get one profile to see what columns exist
-      const { data: sampleProfile, error: sampleError } = await supabase
-        .from("profiles")
-        .select("*")
-        .limit(1)
-        .single();
-
-      return NextResponse.json({
-        debug: true,
-        serviceClientWorking: !countError,
-        totalProfilesInDb: totalCount,
-        countError: countError?.message || null,
-        sampleProfile: sampleProfile,
-        sampleError: sampleError?.message || null,
-        profileColumns: sampleProfile ? Object.keys(sampleProfile) : [],
-        adminId: admin.id,
-        supabaseUrl: process.env.NEXT_PUBLIC_SUPABASE_URL,
-        hasServiceKey: !!process.env.SUPABASE_SERVICE_ROLE_KEY,
-      });
-    }
-
-    // First, get profiles
+    // Build query - using actual schema columns
     let profilesQuery = supabase
       .from("profiles")
-      .select("id, email, full_name, avatar_url, created_at, updated_at", { count: "exact" });
+      .select("*", { count: "exact" });
 
     // Apply search filter
     if (search) {
-      profilesQuery = profilesQuery.or(`email.ilike.%${search}%,full_name.ilike.%${search}%`);
+      profilesQuery = profilesQuery.or(`email.ilike.%${search}%,display_name.ilike.%${search}%`);
+    }
+
+    // Apply plan filter
+    if (plan) {
+      profilesQuery = profilesQuery.eq("subscription_tier", plan);
+    }
+
+    // Apply status filter
+    if (status) {
+      profilesQuery = profilesQuery.eq("subscription_status", status);
     }
 
     // Apply sorting
@@ -76,74 +57,24 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    if (!profiles || profiles.length === 0) {
-      return NextResponse.json({
-        users: [],
-        pagination: {
-          page,
-          limit,
-          total: count || 0,
-          totalPages: Math.ceil((count || 0) / limit),
-        },
-      });
-    }
-
-    // Get user IDs for batch queries
-    const userIds = profiles.map(p => p.id);
-
-    // Fetch subscriptions and credit balances in parallel
-    const [subsResult, creditsResult] = await Promise.all([
-      supabase
-        .from("subscriptions")
-        .select("user_id, id, plan_id, status, stripe_customer_id, current_period_end, cancel_at_period_end")
-        .in("user_id", userIds),
-      supabase
-        .from("credit_balances")
-        .select("user_id, available_credits, used_this_period")
-        .in("user_id", userIds),
-    ]);
-
-    // Create lookup maps
-    type Subscription = {
-      user_id: string;
-      id: string;
-      plan_id: string;
-      status: string;
-      stripe_customer_id: string | null;
-      current_period_end: string | null;
-      cancel_at_period_end: boolean;
-    };
-    type CreditBalance = {
-      user_id: string;
-      available_credits: number;
-      used_this_period: number;
-    };
-
-    const subsMap = new Map<string, Subscription>();
-    const creditsMap = new Map<string, CreditBalance>();
-
-    (subsResult.data as Subscription[] | null)?.forEach(sub => subsMap.set(sub.user_id, sub));
-    (creditsResult.data as CreditBalance[] | null)?.forEach(credit => creditsMap.set(credit.user_id, credit));
-
-    // Combine data
-    let users = profiles.map(profile => ({
+    // Format response to match expected structure
+    const users = (profiles || []).map(profile => ({
       id: profile.id,
       email: profile.email,
-      full_name: profile.full_name,
-      avatar_url: profile.avatar_url,
+      full_name: profile.display_name, // Map display_name to full_name for UI compatibility
+      avatar_url: null,
       created_at: profile.created_at,
-      subscription: subsMap.get(profile.id) || null,
-      credits: creditsMap.get(profile.id) || null,
+      subscription: {
+        plan_id: profile.subscription_tier,
+        status: profile.subscription_status,
+        stripe_customer_id: profile.stripe_customer_id,
+        stripe_subscription_id: profile.stripe_subscription_id,
+      },
+      credits: {
+        available_credits: profile.monthly_quota,
+        used_this_period: 0, // Not tracked in this schema
+      },
     }));
-
-    // Filter by plan/status if needed
-    if (plan) {
-      users = users.filter(u => u.subscription?.plan_id === plan);
-    }
-
-    if (status) {
-      users = users.filter(u => u.subscription?.status === status);
-    }
 
     return NextResponse.json({
       users,
