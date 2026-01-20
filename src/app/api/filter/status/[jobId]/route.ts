@@ -243,7 +243,7 @@ export async function GET(
           thumbnail_url: `https://img.youtube.com/vi/${jobRecord.youtube_id}/maxresdefault.jpg`,
           transcript: data.transcript,
           cached_at: new Date().toISOString(),
-        })
+        }, { onConflict: 'youtube_id' })
         .select()
         .single();
 

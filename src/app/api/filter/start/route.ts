@@ -216,7 +216,7 @@ export async function POST(request: NextRequest) {
           thumbnail_url: `https://img.youtube.com/vi/${youtube_id}/maxresdefault.jpg`,
           transcript: data.transcript,
           cached_at: new Date().toISOString(),
-        })
+        }, { onConflict: 'youtube_id' })
         .select()
         .single();
 
