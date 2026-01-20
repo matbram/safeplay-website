@@ -1,17 +1,41 @@
 import { createClient } from "@/lib/supabase/server";
-import { NextResponse } from "next/server";
+import { createClient as createBrowserClient } from "@supabase/supabase-js";
+import { NextRequest, NextResponse } from "next/server";
+import { authenticateRequest } from "@/lib/auth-helper";
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
-    const supabase = await createClient();
-
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    // Authenticate via session or Bearer token
+    const { user, error: authError } = await authenticateRequest(request);
 
     if (authError || !user) {
       return NextResponse.json(
-        { error: "Unauthorized" },
+        { error: authError || "Unauthorized" },
         { status: 401 }
       );
+    }
+
+    // Create appropriate client for database queries
+    const authHeader = request.headers.get("Authorization");
+    let supabase;
+
+    if (authHeader?.startsWith("Bearer ")) {
+      // Use token-based client for extension requests
+      const token = authHeader.substring(7);
+      supabase = createBrowserClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+        {
+          global: {
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+          },
+        }
+      );
+    } else {
+      // Use session-based client for website requests
+      supabase = await createClient();
     }
 
     // Get user profile
@@ -28,7 +52,7 @@ export async function GET() {
       );
     }
 
-    // Get subscription with plan details
+    // Get subscription with plan details (check profiles table since subscriptions may be empty)
     const { data: subscription } = await supabase
       .from("subscriptions")
       .select("*, plans(*)")
@@ -48,8 +72,14 @@ export async function GET() {
         email: user.email,
         ...profile,
       },
-      subscription,
-      credits,
+      subscription: subscription || {
+        plan_id: profile?.subscription_tier || "free",
+        status: profile?.subscription_status || "active",
+      },
+      credits: credits || {
+        available_credits: profile?.monthly_quota || 30,
+        used_this_period: 0,
+      },
     });
   } catch (error) {
     console.error("Profile fetch error:", error);
@@ -60,23 +90,43 @@ export async function GET() {
   }
 }
 
-export async function PATCH(request: Request) {
+export async function PATCH(request: NextRequest) {
   try {
-    const supabase = await createClient();
-
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    // Authenticate via session or Bearer token
+    const { user, error: authError } = await authenticateRequest(request);
 
     if (authError || !user) {
       return NextResponse.json(
-        { error: "Unauthorized" },
+        { error: authError || "Unauthorized" },
         { status: 401 }
       );
+    }
+
+    // Create appropriate client for database queries
+    const authHeader = request.headers.get("Authorization");
+    let supabase;
+
+    if (authHeader?.startsWith("Bearer ")) {
+      const token = authHeader.substring(7);
+      supabase = createBrowserClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+        {
+          global: {
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+          },
+        }
+      );
+    } else {
+      supabase = await createClient();
     }
 
     const updates = await request.json();
 
     // Only allow updating certain fields
-    const allowedFields = ["full_name", "avatar_url"];
+    const allowedFields = ["display_name", "avatar_url"];
     const filteredUpdates: Record<string, unknown> = {};
     for (const field of allowedFields) {
       if (updates[field] !== undefined) {

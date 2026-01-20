@@ -1,15 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { authenticateRequest } from "@/lib/auth-helper";
+import { fetchYouTubeVideoInfo } from "@/lib/youtube";
 
 // Calculate credit cost: 1 credit per minute, minimum 1 credit
+// Round at 30 seconds (Math.round rounds at 0.5 = 30 seconds)
 function calculateCreditCost(durationSeconds: number): number {
   if (durationSeconds === 0) return 0;
-  const minutes = Math.ceil(durationSeconds / 60);
+  const minutes = Math.round(durationSeconds / 60);
   return Math.max(1, minutes);
 }
 
 // Extract JSON object from string starting at given position
+// NOTE: This is duplicated from @/lib/youtube for backward compatibility
+// TODO: Remove once verified the shared utility works
 function extractJsonObject(str: string, startIndex: number): string | null {
   let braceCount = 0;
   let inString = false;
@@ -48,6 +52,57 @@ function extractJsonObject(str: string, startIndex: number): string | null {
   return null;
 }
 
+// Fetch video info using YouTube's internal API (more reliable than page scraping)
+async function fetchYouTubeVideoInfo(videoId: string): Promise<{
+  title: string;
+  channelName: string | null;
+  durationSeconds: number;
+  thumbnailUrl: string;
+} | null> {
+  // Method 1: Try YouTube's internal player API
+  try {
+    const response = await fetch("https://www.youtube.com/youtubei/v1/player", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+      },
+      body: JSON.stringify({
+        videoId: videoId,
+        context: {
+          client: {
+            clientName: "WEB",
+            clientVersion: "2.20240101.00.00",
+            hl: "en",
+            gl: "US",
+          },
+        },
+      }),
+    });
+
+    if (response.ok) {
+      const data = await response.json();
+      const videoDetails = data.videoDetails;
+
+      if (videoDetails?.lengthSeconds) {
+        return {
+          title: videoDetails.title || "Unknown Video",
+          channelName: videoDetails.author || null,
+          durationSeconds: parseInt(videoDetails.lengthSeconds, 10),
+          thumbnailUrl:
+            videoDetails.thumbnail?.thumbnails?.slice(-1)[0]?.url ||
+            `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`,
+        };
+      }
+    }
+  } catch (error) {
+    console.error("YouTube player API failed:", error);
+  }
+
+  // Method 2: Fallback to page scraping
+  return scrapeYouTubeMetadata(videoId);
+}
+
 // Scrape YouTube page to extract video metadata from ytInitialPlayerResponse
 async function scrapeYouTubeMetadata(videoId: string): Promise<{
   title: string;
@@ -61,6 +116,9 @@ async function scrapeYouTubeMetadata(videoId: string): Promise<{
         // Use a browser-like user agent
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
         "Accept-Language": "en-US,en;q=0.9",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        // Add cookie to bypass consent page
+        "Cookie": "CONSENT=YES+cb; SOCS=CAISNQgDEitib3FfaWRlbnRpdHlmcm9udGVuZHVpc2VydmVyXzIwMjMwODI5LjA3X3AxGgJlbiACGgYIgJnSmgY",
       },
     });
 
@@ -200,14 +258,14 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // Video not cached - scrape metadata from YouTube page
+    // Video not cached - fetch metadata from YouTube
     let title = "Unknown Video";
     let channelName: string | null = null;
     let durationSeconds = 0;
     let thumbnailUrl = `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`;
 
-    // Scrape YouTube page for metadata including duration
-    const scrapedData = await scrapeYouTubeMetadata(videoId);
+    // Fetch YouTube metadata using internal API with page scraping fallback
+    const scrapedData = await fetchYouTubeVideoInfo(videoId);
 
     if (scrapedData) {
       title = scrapedData.title;

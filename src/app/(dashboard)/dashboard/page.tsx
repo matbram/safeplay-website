@@ -59,7 +59,12 @@ export default function DashboardPage() {
 
   useEffect(() => {
     async function fetchHistory() {
-      if (!supabase || !user) return;
+      if (!supabase || !user) {
+        console.log("[Dashboard] No supabase or user, skipping fetch");
+        return;
+      }
+
+      console.log("[Dashboard] Fetching history for user:", user.id);
 
       try {
         // Fetch recent filter history with video details
@@ -82,27 +87,42 @@ export default function DashboardPage() {
           .order("created_at", { ascending: false })
           .limit(5);
 
+        console.log("[Dashboard] Query result:", {
+          count: history?.length,
+          error: error?.message,
+          errorCode: error?.code,
+          items: history?.map((h: { id: string; video_id: string; videos: { title?: string } | null }) => ({
+            id: h.id,
+            video_id: h.video_id,
+            hasVideo: !!h.videos,
+            title: h.videos?.title
+          }))
+        });
+
         if (!error && history) {
-          setRecentVideos(history as unknown as FilterHistoryItem[]);
+          // Filter out items with missing video data
+          const validHistory = history.filter((h: { video_id: string | null }) => h.video_id !== null);
+          console.log("[Dashboard] Valid items:", validHistory.length, "of", history.length);
+          setRecentVideos(validHistory as unknown as FilterHistoryItem[]);
 
           // Calculate stats
           const thisMonth = new Date();
           thisMonth.setDate(1);
           thisMonth.setHours(0, 0, 0, 0);
 
-          const totalVideos = history.length;
-          const totalMinutes = history.reduce((acc: number, h: { videos?: { duration_seconds?: number } }) => {
+          const totalVideos = validHistory.length;
+          const totalMinutes = validHistory.reduce((acc: number, h: { videos?: { duration_seconds?: number } }) => {
             const duration = h.videos?.duration_seconds || 0;
             return acc + Math.ceil(duration / 60);
           }, 0);
-          const thisMonthCount = history.filter(
+          const thisMonthCount = validHistory.filter(
             (h: { created_at: string }) => new Date(h.created_at) >= thisMonth
           ).length;
 
           setStats({ totalVideos, totalMinutes, thisMonth: thisMonthCount });
         }
       } catch (err) {
-        console.error("Error fetching history:", err);
+        console.error("[Dashboard] Error fetching history:", err);
       } finally {
         setLoadingHistory(false);
       }
@@ -120,11 +140,20 @@ export default function DashboardPage() {
   }
 
   const planTier = user?.subscription_tier || "free";
-  const totalCredits = planQuotas[planTier] || 30;
+  const planQuota = planQuotas[planTier] || 30;
   const availableCredits = credits?.available_credits || 0;
   const usedCredits = credits?.used_this_period || 0;
   const rolloverCredits = credits?.rollover_credits || 0;
-  const creditPercentage = totalCredits > 0 ? Math.round((usedCredits / totalCredits) * 100) : 0;
+
+  // Calculate base vs bonus credits
+  // Base credits deplete first, then bonus kicks in
+  const effectiveTotal = availableCredits + usedCredits;
+  const bonusTotal = Math.max(0, effectiveTotal - planQuota);
+  const baseRemaining = Math.max(0, planQuota - usedCredits);
+  const bonusRemaining = Math.max(0, availableCredits - baseRemaining);
+
+  // Percentage is based on base plan usage only (capped at 100%)
+  const creditPercentage = Math.min(100, Math.round((usedCredits / planQuota) * 100));
 
   const periodEnd = credits?.period_end ? new Date(credits.period_end) : new Date();
   const daysUntilReset = Math.max(0, Math.ceil((periodEnd.getTime() - Date.now()) / (1000 * 60 * 60 * 24)));
@@ -165,14 +194,14 @@ export default function DashboardPage() {
             <div className="flex items-end justify-between">
               <div>
                 <p className="text-3xl font-bold">
-                  {availableCredits}
+                  {baseRemaining}
                   <span className="text-lg font-normal text-muted-foreground">
                     {" "}
-                    / {totalCredits}
+                    / {planQuota}
                   </span>
                 </p>
                 <p className="text-sm text-muted-foreground">
-                  credits remaining this month
+                  plan credits remaining
                 </p>
               </div>
               <div className="text-right">
@@ -183,6 +212,15 @@ export default function DashboardPage() {
             </div>
 
             <Progress value={creditPercentage} className="h-3" />
+
+            {bonusTotal > 0 && (
+              <div className="flex items-center justify-between pt-1 text-sm">
+                <span className="text-muted-foreground">Bonus credits</span>
+                <span className="font-medium text-green-600 dark:text-green-400">
+                  +{bonusRemaining} available
+                </span>
+              </div>
+            )}
 
             <div className="grid grid-cols-2 gap-4 pt-2">
               <div className="flex items-center gap-2">
@@ -266,51 +304,73 @@ export default function DashboardPage() {
             </div>
           ) : (
             <div className="space-y-4">
-              {recentVideos.map((video) => (
-                <div
-                  key={video.id}
-                  className="flex items-center gap-4 p-3 rounded-lg hover:bg-accent transition-colors"
-                >
-                  {/* Thumbnail */}
-                  <div className="relative w-24 h-14 bg-muted rounded-lg overflow-hidden flex-shrink-0">
-                    {video.videos?.thumbnail_url ? (
-                      <img
-                        src={video.videos.thumbnail_url}
-                        alt={video.videos.title}
-                        className="absolute inset-0 w-full h-full object-cover"
-                      />
-                    ) : (
-                      <div className="absolute inset-0 flex items-center justify-center">
-                        <Play className="w-6 h-6 text-muted-foreground" />
+              {recentVideos.map((video) => {
+                const youtubeUrl = video.videos?.youtube_id
+                  ? `https://www.youtube.com/watch?v=${video.videos.youtube_id}`
+                  : "#";
+                const thumbnailUrl =
+                  video.videos?.thumbnail_url ||
+                  (video.videos?.youtube_id
+                    ? `https://img.youtube.com/vi/${video.videos.youtube_id}/mqdefault.jpg`
+                    : null);
+
+                return (
+                  <div
+                    key={video.id}
+                    className="flex items-center gap-4 p-3 rounded-lg hover:bg-accent transition-colors"
+                  >
+                    {/* Thumbnail */}
+                    <a
+                      href={youtubeUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="relative w-24 h-14 bg-muted rounded-lg overflow-hidden flex-shrink-0 hover:opacity-80 transition-opacity"
+                    >
+                      {thumbnailUrl ? (
+                        <img
+                          src={thumbnailUrl}
+                          alt={video.videos?.title || "Video thumbnail"}
+                          className="absolute inset-0 w-full h-full object-cover"
+                        />
+                      ) : (
+                        <div className="absolute inset-0 flex items-center justify-center">
+                          <Play className="w-6 h-6 text-muted-foreground" />
+                        </div>
+                      )}
+                      <div className="absolute bottom-1 right-1 px-1.5 py-0.5 rounded bg-black/70 text-white text-xs">
+                        {formatDuration(video.videos?.duration_seconds || 0)}
                       </div>
-                    )}
-                    <div className="absolute bottom-1 right-1 px-1.5 py-0.5 rounded bg-black/70 text-white text-xs">
-                      {formatDuration(video.videos?.duration_seconds || 0)}
-                    </div>
-                  </div>
+                    </a>
 
-                  {/* Info */}
-                  <div className="flex-1 min-w-0">
-                    <p className="font-medium truncate">{video.videos?.title || "Untitled Video"}</p>
-                    <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
-                      <span>{formatDate(new Date(video.created_at))}</span>
-                      <span>-</span>
-                      <span>{video.credits_used} credits</span>
-                      <Badge variant="muted" className="text-xs capitalize">
-                        {video.filter_type}
-                      </Badge>
+                    {/* Info */}
+                    <div className="flex-1 min-w-0">
+                      <a
+                        href={youtubeUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="font-medium truncate block hover:text-primary transition-colors"
+                      >
+                        {video.videos?.title || "Video"}
+                      </a>
+                      <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
+                        <span>{formatDate(new Date(video.created_at))}</span>
+                        <span>{video.credits_used} credits</span>
+                        <Badge variant="muted" className="text-xs capitalize">
+                          {video.filter_type}
+                        </Badge>
+                      </div>
                     </div>
-                  </div>
 
-                  {/* Action */}
-                  <Button variant="ghost" size="sm" asChild>
-                    <Link href={`https://youtube.com/watch?v=${video.videos?.youtube_id}`} target="_blank">
-                      <Play className="w-4 h-4 mr-1" />
-                      Rewatch
-                    </Link>
-                  </Button>
-                </div>
-              ))}
+                    {/* Action */}
+                    <Button variant="ghost" size="sm" asChild>
+                      <a href={youtubeUrl} target="_blank" rel="noopener noreferrer">
+                        <Play className="w-4 h-4 mr-1" />
+                        Rewatch
+                      </a>
+                    </Button>
+                  </div>
+                );
+              })}
             </div>
           )}
         </CardContent>
