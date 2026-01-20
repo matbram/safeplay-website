@@ -5,17 +5,29 @@ import { authenticateRequest } from "@/lib/auth-helper";
 const ORCHESTRATOR_URL = process.env.ORCHESTRATION_API_URL || "https://safeplay-orchestrator-production.up.railway.app";
 const ORCHESTRATOR_API_KEY = process.env.ORCHESTRATION_API_KEY;
 
+// Logging helper for consistent format
+function log(context: string, message: string, data?: Record<string, unknown>) {
+  const timestamp = new Date().toISOString();
+  const dataStr = data ? ` | ${JSON.stringify(data)}` : '';
+  console.log(`[${timestamp}] [FILTER-STATUS] [${context}] ${message}${dataStr}`);
+}
+
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ jobId: string }> }
 ) {
+  const requestId = Math.random().toString(36).substring(7);
+
   try {
     const { jobId } = await params;
+    log(requestId, "=== Filter Status Check ===", { jobId });
 
     // Authenticate via session cookie or bearer token
     const auth = await authenticateRequest(request);
+    log(requestId, "Auth result", { userId: auth.user?.id, error: auth.error });
 
     if (!auth.user) {
+      log(requestId, "Auth failed - returning 401");
       return NextResponse.json(
         { error: auth.error || "Unauthorized" },
         { status: 401 }
@@ -25,14 +37,22 @@ export async function GET(
     const supabase = await createClient();
 
     // Check if this job belongs to the user
-    const { data: jobRecord } = await supabase
+    const { data: jobRecord, error: jobError } = await supabase
       .from("filter_jobs")
       .select("*")
       .eq("job_id", jobId)
       .eq("user_id", auth.user.id)
       .single();
 
+    log(requestId, "Job lookup result", {
+      found: !!jobRecord,
+      status: jobRecord?.status,
+      youtubeId: jobRecord?.youtube_id,
+      error: jobError?.message
+    });
+
     if (!jobRecord) {
+      log(requestId, "Job not found - returning 404");
       return NextResponse.json(
         { error: "Job not found" },
         { status: 404 }
@@ -41,6 +61,7 @@ export async function GET(
 
     // If job already completed in our DB, return cached result
     if (jobRecord.status === "completed") {
+      log(requestId, "Job already completed in DB", { creditsUsed: jobRecord.credits_used });
       return NextResponse.json({
         status: "completed",
         progress: 100,
@@ -50,6 +71,8 @@ export async function GET(
     }
 
     // Poll orchestrator for current status
+    log(requestId, "Polling orchestrator for status", { url: ORCHESTRATOR_URL, jobId });
+
     const headers: Record<string, string> = {};
 
     if (ORCHESTRATOR_API_KEY) {
@@ -62,8 +85,16 @@ export async function GET(
     });
 
     const data = await response.json();
+    log(requestId, "Orchestrator status response", {
+      httpStatus: response.status,
+      jobStatus: data.status,
+      progress: data.progress,
+      hasTranscript: !!data.transcript,
+      hasVideo: !!data.video
+    });
 
     if (!response.ok) {
+      log(requestId, "Orchestrator error - updating job to failed", { error: data.error });
       // Update job status to failed
       await supabase
         .from("filter_jobs")
@@ -106,6 +137,8 @@ export async function GET(
         displayMessage = "Processing...";
     }
 
+    log(requestId, "Status mapping", { rawStatus: data.status, displayProgress, displayMessage });
+
     // Update job progress in our DB
     await supabase
       .from("filter_jobs")
@@ -117,20 +150,33 @@ export async function GET(
 
     // If completed, finalize the job (deduct credits, save video, save history)
     if (data.status === "completed" && data.transcript) {
+      log(requestId, "=== Job completed - finalizing ===");
+
       const durationSeconds = data.transcript.duration || 0;
       const creditCost = calculateCreditCost(durationSeconds);
+      log(requestId, "Credit calculation", { durationSeconds, creditCost });
 
       // Check user's credit balance
-      const { data: creditBalance } = await supabase
+      const { data: creditBalance, error: balanceError } = await supabase
         .from("credit_balances")
         .select("*")
         .eq("user_id", auth.user.id)
         .single();
 
+      log(requestId, "Credit balance lookup", {
+        available: creditBalance?.available_credits,
+        usedThisPeriod: creditBalance?.used_this_period,
+        error: balanceError?.message
+      });
+
       const availableCredits = creditBalance?.available_credits || 0;
 
       // Check credits
       if (creditCost > availableCredits) {
+        log(requestId, "INSUFFICIENT CREDITS - marking job as failed", {
+          required: creditCost,
+          available: availableCredits
+        });
         // Update job status to failed due to insufficient credits
         await supabase
           .from("filter_jobs")
@@ -150,6 +196,14 @@ export async function GET(
       const newBalance = availableCredits - creditCost;
       const newUsed = (creditBalance?.used_this_period || 0) + creditCost;
 
+      log(requestId, "Deducting credits", {
+        creditCost,
+        oldBalance: availableCredits,
+        newBalance,
+        oldUsed: creditBalance?.used_this_period,
+        newUsed
+      });
+
       const { error: creditUpdateError } = await supabase
         .from("credit_balances")
         .update({
@@ -158,22 +212,25 @@ export async function GET(
         })
         .eq("user_id", auth.user.id);
 
-      if (creditUpdateError) {
-        console.error("Error updating credits:", creditUpdateError);
-      }
+      log(requestId, "Credit update result", {
+        success: !creditUpdateError,
+        error: creditUpdateError?.message
+      });
 
       // Record credit transaction
-      const { error: txError } = await supabase.from("credit_transactions").insert({
+      const { data: txData, error: txError } = await supabase.from("credit_transactions").insert({
         user_id: auth.user.id,
         amount: -creditCost,
         balance_after: newBalance,
         type: "filter",
         description: `Filtered video: ${data.video?.title || jobRecord.youtube_id}`,
-      });
+      }).select().single();
 
-      if (txError) {
-        console.error("Error recording transaction:", txError);
-      }
+      log(requestId, "Transaction insert result", {
+        success: !txError,
+        txId: txData?.id,
+        error: txError?.message
+      });
 
       // Cache video in our database
       const { data: videoRecord, error: videoError } = await supabase
@@ -190,9 +247,11 @@ export async function GET(
         .select()
         .single();
 
-      if (videoError) {
-        console.error("Error caching video:", videoError);
-      }
+      log(requestId, "Video cache result", {
+        success: !videoError,
+        videoId: videoRecord?.id,
+        error: videoError?.message
+      });
 
       // Record in filter history
       const { data: historyEntry, error: historyError } = await supabase
@@ -207,12 +266,16 @@ export async function GET(
         .select()
         .single();
 
-      if (historyError) {
-        console.error("Error saving history:", historyError);
-      }
+      log(requestId, "History insert result", {
+        success: !historyError,
+        historyId: historyEntry?.id,
+        videoId: videoRecord?.id,
+        creditsUsed: creditCost,
+        error: historyError?.message
+      });
 
       // Mark job as completed
-      await supabase
+      const { error: jobUpdateError } = await supabase
         .from("filter_jobs")
         .update({
           status: "completed",
@@ -220,6 +283,13 @@ export async function GET(
           completed_at: new Date().toISOString(),
         })
         .eq("job_id", jobId);
+
+      log(requestId, "Job completion update", {
+        success: !jobUpdateError,
+        error: jobUpdateError?.message
+      });
+
+      log(requestId, "=== Job finalized ===", { creditsUsed: creditCost, newBalance, historyId: historyEntry?.id });
 
       return NextResponse.json({
         status: "completed",
@@ -240,6 +310,7 @@ export async function GET(
 
     // Handle failed status from orchestrator
     if (data.status === "failed") {
+      log(requestId, "Orchestrator returned failed status", { error: data.error });
       await supabase
         .from("filter_jobs")
         .update({ status: "failed", error: data.error })
@@ -253,6 +324,7 @@ export async function GET(
     }
 
     // Return current status
+    log(requestId, "Returning in-progress status", { status: data.status, progress: displayProgress });
     return NextResponse.json({
       status: data.status,
       progress: displayProgress,
@@ -260,6 +332,7 @@ export async function GET(
       video: data.video,
     });
   } catch (error) {
+    log(requestId, "EXCEPTION", { error: String(error) });
     console.error("Filter status error:", error);
     return NextResponse.json(
       { error: "Failed to check status" },

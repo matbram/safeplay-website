@@ -5,12 +5,25 @@ import { authenticateRequest } from "@/lib/auth-helper";
 const ORCHESTRATOR_URL = process.env.ORCHESTRATION_API_URL || "https://safeplay-orchestrator-production.up.railway.app";
 const ORCHESTRATOR_API_KEY = process.env.ORCHESTRATION_API_KEY;
 
+// Logging helper for consistent format
+function log(context: string, message: string, data?: Record<string, unknown>) {
+  const timestamp = new Date().toISOString();
+  const dataStr = data ? ` | ${JSON.stringify(data)}` : '';
+  console.log(`[${timestamp}] [FILTER-START] [${context}] ${message}${dataStr}`);
+}
+
 export async function POST(request: NextRequest) {
+  const requestId = Math.random().toString(36).substring(7);
+
   try {
+    log(requestId, "=== Filter Start Request ===");
+
     // Authenticate via session cookie or bearer token
     const auth = await authenticateRequest(request);
+    log(requestId, "Auth result", { userId: auth.user?.id, error: auth.error });
 
     if (!auth.user) {
+      log(requestId, "Auth failed - returning 401");
       return NextResponse.json(
         { error: auth.error || "Unauthorized" },
         { status: 401 }
@@ -18,9 +31,12 @@ export async function POST(request: NextRequest) {
     }
 
     const supabase = await createClient();
-    const { youtube_id, filter_type, custom_words } = await request.json();
+    const body = await request.json();
+    const { youtube_id, filter_type, custom_words } = body;
+    log(requestId, "Request body", { youtube_id, filter_type, custom_words });
 
     if (!youtube_id) {
+      log(requestId, "Missing youtube_id - returning 400");
       return NextResponse.json(
         { error: "YouTube ID is required" },
         { status: 400 }
@@ -28,15 +44,23 @@ export async function POST(request: NextRequest) {
     }
 
     // Check if video is already cached in OUR database (free to rewatch)
-    const { data: cachedVideo } = await supabase
+    const { data: cachedVideo, error: cacheError } = await supabase
       .from("videos")
       .select("*")
       .eq("youtube_id", youtube_id)
       .single();
 
+    log(requestId, "Cache lookup result", {
+      found: !!cachedVideo,
+      hasTranscript: !!cachedVideo?.transcript,
+      videoId: cachedVideo?.id,
+      error: cacheError?.message
+    });
+
     if (cachedVideo && cachedVideo.transcript) {
       // Video already transcribed in our DB - free to rewatch
-      // Record in filter history (no credits charged)
+      log(requestId, "Video cached - inserting history (free rewatch)");
+
       const { data: historyEntry, error: historyError } = await supabase
         .from("filter_history")
         .insert({
@@ -49,10 +73,13 @@ export async function POST(request: NextRequest) {
         .select()
         .single();
 
-      if (historyError) {
-        console.error("Error saving history:", historyError);
-      }
+      log(requestId, "History insert result", {
+        success: !historyError,
+        historyId: historyEntry?.id,
+        error: historyError?.message
+      });
 
+      log(requestId, "=== Returning cached result (0 credits) ===");
       return NextResponse.json({
         status: "completed",
         cached: true,
@@ -70,6 +97,8 @@ export async function POST(request: NextRequest) {
     }
 
     // Video not in our cache - call orchestrator to start filtering
+    log(requestId, "Video not cached - calling orchestrator", { url: ORCHESTRATOR_URL });
+
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
     };
@@ -85,8 +114,15 @@ export async function POST(request: NextRequest) {
     });
 
     const data = await response.json();
+    log(requestId, "Orchestrator response", {
+      status: response.status,
+      responseStatus: data.status,
+      hasTranscript: !!data.transcript,
+      jobId: data.job_id
+    });
 
     if (!response.ok) {
+      log(requestId, "Orchestrator error", { error: data.error, errorCode: data.error_code });
       return NextResponse.json(
         { error: data.error || "Failed to start filtering", error_code: data.error_code },
         { status: response.status }
@@ -95,19 +131,29 @@ export async function POST(request: NextRequest) {
 
     // If orchestrator has it cached and returns completed immediately
     if (data.status === "completed" && data.transcript) {
+      log(requestId, "Orchestrator returned completed immediately");
+
       const durationSeconds = data.transcript.duration || 0;
       const creditCost = calculateCreditCost(durationSeconds);
+      log(requestId, "Credit calculation", { durationSeconds, creditCost });
 
       // Check user's credit balance
-      const { data: creditBalance } = await supabase
+      const { data: creditBalance, error: balanceError } = await supabase
         .from("credit_balances")
         .select("*")
         .eq("user_id", auth.user.id)
         .single();
 
+      log(requestId, "Credit balance lookup", {
+        available: creditBalance?.available_credits,
+        usedThisPeriod: creditBalance?.used_this_period,
+        error: balanceError?.message
+      });
+
       const availableCredits = creditBalance?.available_credits || 0;
 
       if (creditCost > availableCredits) {
+        log(requestId, "INSUFFICIENT CREDITS", { required: creditCost, available: availableCredits });
         return NextResponse.json(
           {
             error: "Insufficient credits",
@@ -123,6 +169,14 @@ export async function POST(request: NextRequest) {
       const newBalance = availableCredits - creditCost;
       const newUsed = (creditBalance?.used_this_period || 0) + creditCost;
 
+      log(requestId, "Deducting credits", {
+        creditCost,
+        oldBalance: availableCredits,
+        newBalance,
+        oldUsed: creditBalance?.used_this_period,
+        newUsed
+      });
+
       const { error: creditUpdateError } = await supabase
         .from("credit_balances")
         .update({
@@ -131,22 +185,25 @@ export async function POST(request: NextRequest) {
         })
         .eq("user_id", auth.user.id);
 
-      if (creditUpdateError) {
-        console.error("Error updating credits:", creditUpdateError);
-      }
+      log(requestId, "Credit update result", {
+        success: !creditUpdateError,
+        error: creditUpdateError?.message
+      });
 
       // Record credit transaction
-      const { error: txError } = await supabase.from("credit_transactions").insert({
+      const { data: txData, error: txError } = await supabase.from("credit_transactions").insert({
         user_id: auth.user.id,
         amount: -creditCost,
         balance_after: newBalance,
         type: "filter",
         description: `Filtered video: ${data.video?.title || youtube_id}`,
-      });
+      }).select().single();
 
-      if (txError) {
-        console.error("Error recording transaction:", txError);
-      }
+      log(requestId, "Transaction insert result", {
+        success: !txError,
+        txId: txData?.id,
+        error: txError?.message
+      });
 
       // Cache video in our database
       const { data: videoRecord, error: videoError } = await supabase
@@ -163,9 +220,11 @@ export async function POST(request: NextRequest) {
         .select()
         .single();
 
-      if (videoError) {
-        console.error("Error caching video:", videoError);
-      }
+      log(requestId, "Video cache result", {
+        success: !videoError,
+        videoId: videoRecord?.id,
+        error: videoError?.message
+      });
 
       // Record in filter history
       const { data: historyEntry, error: historyError } = await supabase
@@ -180,9 +239,15 @@ export async function POST(request: NextRequest) {
         .select()
         .single();
 
-      if (historyError) {
-        console.error("Error saving history:", historyError);
-      }
+      log(requestId, "History insert result", {
+        success: !historyError,
+        historyId: historyEntry?.id,
+        videoId: videoRecord?.id,
+        creditsUsed: creditCost,
+        error: historyError?.message
+      });
+
+      log(requestId, "=== Filter complete ===", { creditsUsed: creditCost, newBalance });
 
       return NextResponse.json({
         status: "completed",
@@ -202,6 +267,8 @@ export async function POST(request: NextRequest) {
 
     // Processing started - save job and return job ID for polling
     if (data.status === "processing" && data.job_id) {
+      log(requestId, "Processing started - saving job", { jobId: data.job_id });
+
       const { error: jobError } = await supabase.from("filter_jobs").upsert({
         job_id: data.job_id,
         user_id: auth.user.id,
@@ -212,9 +279,7 @@ export async function POST(request: NextRequest) {
         created_at: new Date().toISOString(),
       });
 
-      if (jobError) {
-        console.error("Error saving job:", jobError);
-      }
+      log(requestId, "Job save result", { success: !jobError, error: jobError?.message });
 
       return NextResponse.json({
         status: "processing",
@@ -226,14 +291,17 @@ export async function POST(request: NextRequest) {
 
     // Handle failed status
     if (data.status === "failed") {
+      log(requestId, "Orchestrator returned failed status", { error: data.error });
       return NextResponse.json(
         { error: data.error || "Failed to process video", error_code: data.error_code },
         { status: 400 }
       );
     }
 
+    log(requestId, "Returning raw orchestrator response", { status: data.status });
     return NextResponse.json(data);
   } catch (error) {
+    log(requestId, "EXCEPTION", { error: String(error) });
     console.error("Filter start error:", error);
     return NextResponse.json(
       { error: "Failed to start filtering" },
