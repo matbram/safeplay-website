@@ -20,83 +20,104 @@ export async function GET(request: NextRequest) {
 
     const supabase = createServiceClient();
 
-    // Build query
-    let query = supabase
+    // First, get profiles
+    let profilesQuery = supabase
       .from("profiles")
-      .select(
-        `
-        id,
-        email,
-        full_name,
-        avatar_url,
-        created_at,
-        updated_at,
-        subscriptions!left(
-          id,
-          plan_id,
-          status,
-          stripe_customer_id,
-          current_period_end,
-          cancel_at_period_end
-        ),
-        credit_balances!left(
-          available_credits,
-          used_this_period
-        )
-      `,
-        { count: "exact" }
-      );
+      .select("id, email, full_name, avatar_url, created_at, updated_at", { count: "exact" });
 
     // Apply search filter
     if (search) {
-      query = query.or(`email.ilike.%${search}%,full_name.ilike.%${search}%`);
+      profilesQuery = profilesQuery.or(`email.ilike.%${search}%,full_name.ilike.%${search}%`);
     }
 
     // Apply sorting
     const ascending = sortOrder === "asc";
-    query = query.order(sortBy, { ascending });
+    profilesQuery = profilesQuery.order(sortBy, { ascending });
 
     // Apply pagination
-    query = query.range(offset, offset + limit - 1);
+    profilesQuery = profilesQuery.range(offset, offset + limit - 1);
 
-    const { data: users, error, count } = await query;
+    const { data: profiles, error: profilesError, count } = await profilesQuery;
 
-    if (error) {
-      console.error("Users fetch error:", error);
+    if (profilesError) {
+      console.error("Profiles fetch error:", profilesError);
       return NextResponse.json(
-        { error: "Failed to fetch users" },
+        { error: "Failed to fetch users", details: profilesError.message },
         { status: 500 }
       );
     }
 
-    // Filter by plan/status if needed (done client-side due to join limitations)
-    let filteredUsers = users || [];
+    if (!profiles || profiles.length === 0) {
+      return NextResponse.json({
+        users: [],
+        pagination: {
+          page,
+          limit,
+          total: count || 0,
+          totalPages: Math.ceil((count || 0) / limit),
+        },
+      });
+    }
 
+    // Get user IDs for batch queries
+    const userIds = profiles.map(p => p.id);
+
+    // Fetch subscriptions and credit balances in parallel
+    const [subsResult, creditsResult] = await Promise.all([
+      supabase
+        .from("subscriptions")
+        .select("user_id, id, plan_id, status, stripe_customer_id, current_period_end, cancel_at_period_end")
+        .in("user_id", userIds),
+      supabase
+        .from("credit_balances")
+        .select("user_id, available_credits, used_this_period")
+        .in("user_id", userIds),
+    ]);
+
+    // Create lookup maps
+    type Subscription = {
+      user_id: string;
+      id: string;
+      plan_id: string;
+      status: string;
+      stripe_customer_id: string | null;
+      current_period_end: string | null;
+      cancel_at_period_end: boolean;
+    };
+    type CreditBalance = {
+      user_id: string;
+      available_credits: number;
+      used_this_period: number;
+    };
+
+    const subsMap = new Map<string, Subscription>();
+    const creditsMap = new Map<string, CreditBalance>();
+
+    (subsResult.data as Subscription[] | null)?.forEach(sub => subsMap.set(sub.user_id, sub));
+    (creditsResult.data as CreditBalance[] | null)?.forEach(credit => creditsMap.set(credit.user_id, credit));
+
+    // Combine data
+    let users = profiles.map(profile => ({
+      id: profile.id,
+      email: profile.email,
+      full_name: profile.full_name,
+      avatar_url: profile.avatar_url,
+      created_at: profile.created_at,
+      subscription: subsMap.get(profile.id) || null,
+      credits: creditsMap.get(profile.id) || null,
+    }));
+
+    // Filter by plan/status if needed
     if (plan) {
-      filteredUsers = filteredUsers.filter(
-        (u) => (u.subscriptions as { plan_id: string }[])?.[0]?.plan_id === plan
-      );
+      users = users.filter(u => u.subscription?.plan_id === plan);
     }
 
     if (status) {
-      filteredUsers = filteredUsers.filter(
-        (u) => (u.subscriptions as { status: string }[])?.[0]?.status === status
-      );
+      users = users.filter(u => u.subscription?.status === status);
     }
 
-    // Format response
-    const formattedUsers = filteredUsers.map((user) => ({
-      id: user.id,
-      email: user.email,
-      full_name: user.full_name,
-      avatar_url: user.avatar_url,
-      created_at: user.created_at,
-      subscription: (user.subscriptions as Record<string, unknown>[])?.[0] || null,
-      credits: (user.credit_balances as Record<string, unknown>[])?.[0] || null,
-    }));
-
     return NextResponse.json({
-      users: formattedUsers,
+      users,
       pagination: {
         page,
         limit,
