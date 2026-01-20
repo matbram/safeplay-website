@@ -191,7 +191,7 @@ export default function DashboardPage() {
                   {availableCredits}
                   <span className="text-lg font-normal text-muted-foreground">
                     {" "}
-                    / {totalCredits}
+                    / {effectiveTotal}
                   </span>
                 </p>
                 <p className="text-sm text-muted-foreground">
