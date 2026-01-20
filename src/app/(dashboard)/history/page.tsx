@@ -111,7 +111,7 @@ export default function HistoryPage() {
           setHistory([]);
         } else {
           // Filter out items with null videos (shouldn't happen but be safe)
-          const validData = (data || []).filter(item => item.video_id !== null);
+          const validData = (data || []).filter((item: { video_id: string | null }) => item.video_id !== null);
           console.log("[History] Valid items:", validData.length, "of", data?.length);
           setHistory(validData);
 
