@@ -144,7 +144,10 @@ export default function DashboardPage() {
   const availableCredits = credits?.available_credits || 0;
   const usedCredits = credits?.used_this_period || 0;
   const rolloverCredits = credits?.rollover_credits || 0;
-  const creditPercentage = totalCredits > 0 ? Math.round((usedCredits / totalCredits) * 100) : 0;
+  // Calculate percentage based on actual usage (used / (used + available))
+  // This handles cases where admin adds/removes credits properly
+  const effectiveTotal = availableCredits + usedCredits;
+  const creditPercentage = effectiveTotal > 0 ? Math.round((usedCredits / effectiveTotal) * 100) : 0;
 
   const periodEnd = credits?.period_end ? new Date(credits.period_end) : new Date();
   const daysUntilReset = Math.max(0, Math.ceil((periodEnd.getTime() - Date.now()) / (1000 * 60 * 60 * 24)));
