@@ -1,39 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
-import { authenticateRequest } from "@/lib/auth-helper";
+import { requireAdmin } from "@/lib/admin-auth";
 
 export async function POST(request: NextRequest) {
   try {
-    const auth = await authenticateRequest(request);
-
-    if (!auth.user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    // Check admin access using the proper admin auth
+    const { admin, response } = await requireAdmin(request);
+    if (!admin) {
+      return response;
     }
 
-    // Check if user is admin
     const supabase = await createServiceClient();
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("is_admin")
-      .eq("id", auth.user.id)
-      .single();
 
-    if (!profile?.is_admin) {
-      return NextResponse.json({ error: "Admin access required" }, { status: 403 });
-    }
-
-    // Update all thumbnails from maxresdefault to hqdefault
-    const { data, error } = await supabase
-      .from("videos")
-      .update({
-        thumbnail_url: supabase.rpc('replace', {
-          // This won't work directly, need raw SQL
-        })
-      })
-      .like("thumbnail_url", "%maxresdefault%");
-
-    // Since Supabase JS doesn't support string replace easily,
-    // let's do it differently - get all videos and update them
+    // Get all videos with maxresdefault thumbnails
     const { data: videos, error: fetchError } = await supabase
       .from("videos")
       .select("id, youtube_id, thumbnail_url")
