@@ -15,10 +15,29 @@ export async function GET(request: NextRequest) {
     const status = searchParams.get("status") || "";
     const sortBy = searchParams.get("sortBy") || "created_at";
     const sortOrder = searchParams.get("sortOrder") || "desc";
+    const debug = searchParams.get("debug") === "true";
 
     const offset = (page - 1) * limit;
 
     const supabase = createServiceClient();
+
+    // Debug: Check if service client is working
+    if (debug) {
+      // Try a simple count query
+      const { count: totalCount, error: countError } = await supabase
+        .from("profiles")
+        .select("*", { count: "exact", head: true });
+
+      return NextResponse.json({
+        debug: true,
+        serviceClientWorking: !countError,
+        totalProfilesInDb: totalCount,
+        countError: countError?.message || null,
+        adminId: admin.id,
+        supabaseUrl: process.env.NEXT_PUBLIC_SUPABASE_URL,
+        hasServiceKey: !!process.env.SUPABASE_SERVICE_ROLE_KEY,
+      });
+    }
 
     // First, get profiles
     let profilesQuery = supabase
