@@ -1,15 +1,14 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useSearchParams, useRouter } from "next/navigation";
+import { Suspense, useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { Shield, CheckCircle, XCircle, Loader2, LogIn } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
 
-export default function ExtensionAuthPage() {
+function ExtensionAuthContent() {
   const searchParams = useSearchParams();
-  const router = useRouter();
   const [status, setStatus] = useState<"loading" | "success" | "error" | "unauthenticated">("loading");
   const [error, setError] = useState<string | null>(null);
   const [userEmail, setUserEmail] = useState<string | null>(null);
@@ -90,6 +89,101 @@ export default function ExtensionAuthPage() {
   }, [extensionId]);
 
   return (
+    <div className="rounded-2xl border border-border bg-card p-8">
+      {status === "loading" && (
+        <div className="text-center">
+          <Loader2 className="w-12 h-12 text-primary mx-auto animate-spin" />
+          <p className="mt-4 text-muted-foreground">Checking authentication...</p>
+        </div>
+      )}
+
+      {status === "success" && (
+        <div className="text-center">
+          <div className="w-16 h-16 rounded-full bg-success/10 flex items-center justify-center mx-auto">
+            <CheckCircle className="w-9 h-9 text-success" />
+          </div>
+          <h2 className="mt-4 text-xl font-semibold text-foreground">
+            Successfully Connected!
+          </h2>
+          <p className="mt-2 text-muted-foreground">
+            Signed in as <span className="font-medium text-foreground">{userEmail}</span>
+          </p>
+          <p className="mt-4 text-sm text-muted-foreground">
+            This window will close automatically...
+          </p>
+          <Button
+            variant="outline"
+            className="mt-6"
+            onClick={() => window.close()}
+          >
+            Close Window
+          </Button>
+        </div>
+      )}
+
+      {status === "unauthenticated" && (
+        <div className="text-center">
+          <div className="w-16 h-16 rounded-full bg-warning/10 flex items-center justify-center mx-auto">
+            <LogIn className="w-9 h-9 text-warning" />
+          </div>
+          <h2 className="mt-4 text-xl font-semibold text-foreground">
+            Sign In Required
+          </h2>
+          <p className="mt-2 text-muted-foreground">
+            Please sign in to connect your SafePlay account with the browser extension.
+          </p>
+          <div className="mt-6 space-y-3">
+            <Button className="w-full" asChild>
+              <Link href={`/login?next=/extension/auth?extensionId=${extensionId}`}>
+                Sign In
+              </Link>
+            </Button>
+            <Button variant="outline" className="w-full" asChild>
+              <Link href={`/signup?next=/extension/auth?extensionId=${extensionId}`}>
+                Create Account
+              </Link>
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {status === "error" && (
+        <div className="text-center">
+          <div className="w-16 h-16 rounded-full bg-error/10 flex items-center justify-center mx-auto">
+            <XCircle className="w-9 h-9 text-error" />
+          </div>
+          <h2 className="mt-4 text-xl font-semibold text-foreground">
+            Connection Failed
+          </h2>
+          <p className="mt-2 text-muted-foreground">
+            {error || "Unable to connect to the extension. Please try again."}
+          </p>
+          <Button
+            variant="outline"
+            className="mt-6"
+            onClick={() => window.location.reload()}
+          >
+            Try Again
+          </Button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function LoadingFallback() {
+  return (
+    <div className="rounded-2xl border border-border bg-card p-8">
+      <div className="text-center">
+        <Loader2 className="w-12 h-12 text-primary mx-auto animate-spin" />
+        <p className="mt-4 text-muted-foreground">Loading...</p>
+      </div>
+    </div>
+  );
+}
+
+export default function ExtensionAuthPage() {
+  return (
     <div className="min-h-screen bg-background flex items-center justify-center p-4">
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
@@ -100,85 +194,9 @@ export default function ExtensionAuthPage() {
           <p className="text-muted-foreground mt-2">Browser Authentication</p>
         </div>
 
-        <div className="rounded-2xl border border-border bg-card p-8">
-          {status === "loading" && (
-            <div className="text-center">
-              <Loader2 className="w-12 h-12 text-primary mx-auto animate-spin" />
-              <p className="mt-4 text-muted-foreground">Checking authentication...</p>
-            </div>
-          )}
-
-          {status === "success" && (
-            <div className="text-center">
-              <div className="w-16 h-16 rounded-full bg-success/10 flex items-center justify-center mx-auto">
-                <CheckCircle className="w-9 h-9 text-success" />
-              </div>
-              <h2 className="mt-4 text-xl font-semibold text-foreground">
-                Successfully Connected!
-              </h2>
-              <p className="mt-2 text-muted-foreground">
-                Signed in as <span className="font-medium text-foreground">{userEmail}</span>
-              </p>
-              <p className="mt-4 text-sm text-muted-foreground">
-                This window will close automatically...
-              </p>
-              <Button
-                variant="outline"
-                className="mt-6"
-                onClick={() => window.close()}
-              >
-                Close Window
-              </Button>
-            </div>
-          )}
-
-          {status === "unauthenticated" && (
-            <div className="text-center">
-              <div className="w-16 h-16 rounded-full bg-warning/10 flex items-center justify-center mx-auto">
-                <LogIn className="w-9 h-9 text-warning" />
-              </div>
-              <h2 className="mt-4 text-xl font-semibold text-foreground">
-                Sign In Required
-              </h2>
-              <p className="mt-2 text-muted-foreground">
-                Please sign in to connect your SafePlay account with the browser extension.
-              </p>
-              <div className="mt-6 space-y-3">
-                <Button className="w-full" asChild>
-                  <Link href={`/login?next=/extension/auth?extensionId=${extensionId}`}>
-                    Sign In
-                  </Link>
-                </Button>
-                <Button variant="outline" className="w-full" asChild>
-                  <Link href={`/signup?next=/extension/auth?extensionId=${extensionId}`}>
-                    Create Account
-                  </Link>
-                </Button>
-              </div>
-            </div>
-          )}
-
-          {status === "error" && (
-            <div className="text-center">
-              <div className="w-16 h-16 rounded-full bg-error/10 flex items-center justify-center mx-auto">
-                <XCircle className="w-9 h-9 text-error" />
-              </div>
-              <h2 className="mt-4 text-xl font-semibold text-foreground">
-                Connection Failed
-              </h2>
-              <p className="mt-2 text-muted-foreground">
-                {error || "Unable to connect to the extension. Please try again."}
-              </p>
-              <Button
-                variant="outline"
-                className="mt-6"
-                onClick={() => window.location.reload()}
-              >
-                Try Again
-              </Button>
-            </div>
-          )}
-        </div>
+        <Suspense fallback={<LoadingFallback />}>
+          <ExtensionAuthContent />
+        </Suspense>
 
         <p className="mt-6 text-center text-xs text-muted-foreground">
           Having trouble? Visit our{" "}
