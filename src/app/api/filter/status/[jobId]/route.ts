@@ -250,29 +250,46 @@ export async function GET(
       log(requestId, "Video cache result", {
         success: !videoError,
         videoId: videoRecord?.id,
-        error: videoError?.message
+        youtubeId: jobRecord.youtube_id,
+        error: videoError?.message,
+        errorCode: videoError?.code
       });
 
-      // Record in filter history
-      const { data: historyEntry, error: historyError } = await supabase
-        .from("filter_history")
-        .insert({
-          user_id: auth.user.id,
-          video_id: videoRecord?.id,
-          filter_type: jobRecord.filter_type || "mute",
-          custom_words: jobRecord.custom_words || [],
-          credits_used: creditCost,
-        })
-        .select()
-        .single();
+      // If video caching failed, we cannot create history entry properly
+      let historyEntry = null;
+      let historyError = null;
 
-      log(requestId, "History insert result", {
-        success: !historyError,
-        historyId: historyEntry?.id,
-        videoId: videoRecord?.id,
-        creditsUsed: creditCost,
-        error: historyError?.message
-      });
+      if (videoError || !videoRecord) {
+        log(requestId, "CRITICAL: Video cache failed - cannot create history", {
+          error: videoError?.message,
+          code: videoError?.code
+        });
+      } else {
+        // Record in filter history
+        const result = await supabase
+          .from("filter_history")
+          .insert({
+            user_id: auth.user.id,
+            video_id: videoRecord.id,
+            filter_type: jobRecord.filter_type || "mute",
+            custom_words: jobRecord.custom_words || [],
+            credits_used: creditCost,
+          })
+          .select()
+          .single();
+
+        historyEntry = result.data;
+        historyError = result.error;
+
+        log(requestId, "History insert result", {
+          success: !historyError,
+          historyId: historyEntry?.id,
+          videoId: videoRecord.id,
+          creditsUsed: creditCost,
+          error: historyError?.message,
+          errorCode: historyError?.code
+        });
+      }
 
       // Mark job as completed
       const { error: jobUpdateError } = await supabase

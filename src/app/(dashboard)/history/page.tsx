@@ -67,8 +67,12 @@ export default function HistoryPage() {
 
   useEffect(() => {
     async function fetchHistory() {
-      if (!user) return;
+      if (!user) {
+        console.log("[History] No user, skipping fetch");
+        return;
+      }
 
+      console.log("[History] Fetching history for user:", user.id);
       setLoading(true);
       try {
         const { data, error } = await supabase
@@ -90,27 +94,42 @@ export default function HistoryPage() {
           .eq("user_id", user.id)
           .order("created_at", { ascending: false });
 
+        console.log("[History] Query result:", {
+          count: data?.length,
+          error: error?.message,
+          errorCode: error?.code,
+          firstItem: data?.[0] ? {
+            id: data[0].id,
+            video_id: data[0].video_id,
+            hasVideo: !!data[0].videos,
+            title: data[0].videos?.title
+          } : null
+        });
+
         if (error) {
-          console.error("Error fetching history:", error);
+          console.error("[History] Error fetching history:", error);
           setHistory([]);
         } else {
-          setHistory(data || []);
+          // Filter out items with null videos (shouldn't happen but be safe)
+          const validData = (data || []).filter(item => item.video_id !== null);
+          console.log("[History] Valid items:", validData.length, "of", data?.length);
+          setHistory(validData);
 
           // Calculate stats
-          const totalVideos = data?.length || 0;
+          const totalVideos = validData.length;
           const totalMinutes = Math.round(
-            (data || []).reduce((acc: number, item: HistoryItem) => {
+            validData.reduce((acc: number, item: HistoryItem) => {
               return acc + (item.videos?.duration_seconds || 0);
             }, 0) / 60
           );
-          const totalCredits = (data || []).reduce((acc: number, item: HistoryItem) => {
+          const totalCredits = validData.reduce((acc: number, item: HistoryItem) => {
             return acc + (item.credits_used || 0);
           }, 0);
 
           setStats({ totalVideos, totalMinutes, totalCredits });
         }
       } catch (err) {
-        console.error("Error:", err);
+        console.error("[History] Exception:", err);
         setHistory([]);
       } finally {
         setLoading(false);

@@ -223,15 +223,40 @@ export async function POST(request: NextRequest) {
       log(requestId, "Video cache result", {
         success: !videoError,
         videoId: videoRecord?.id,
-        error: videoError?.message
+        youtubeId: youtube_id,
+        error: videoError?.message,
+        errorCode: videoError?.code
       });
+
+      // If video caching failed, we cannot create history entry
+      if (videoError || !videoRecord) {
+        log(requestId, "CRITICAL: Video cache failed - cannot create history", {
+          error: videoError?.message,
+          code: videoError?.code
+        });
+        // Still return success to user since filtering worked
+        return NextResponse.json({
+          status: "completed",
+          cached: true,
+          transcript: data.transcript,
+          video: {
+            youtube_id: youtube_id,
+            title: data.video?.title || data.transcript.title || "Unknown Video",
+            channel_name: data.video?.channel_name || null,
+            duration_seconds: durationSeconds,
+            thumbnail_url: `https://img.youtube.com/vi/${youtube_id}/maxresdefault.jpg`,
+          },
+          credits_used: creditCost,
+          warning: "History could not be saved due to database error",
+        });
+      }
 
       // Record in filter history
       const { data: historyEntry, error: historyError } = await supabase
         .from("filter_history")
         .insert({
           user_id: auth.user.id,
-          video_id: videoRecord?.id,
+          video_id: videoRecord.id,
           filter_type: filter_type || "mute",
           custom_words: custom_words || [],
           credits_used: creditCost,
@@ -242,9 +267,10 @@ export async function POST(request: NextRequest) {
       log(requestId, "History insert result", {
         success: !historyError,
         historyId: historyEntry?.id,
-        videoId: videoRecord?.id,
+        videoId: videoRecord.id,
         creditsUsed: creditCost,
-        error: historyError?.message
+        error: historyError?.message,
+        errorCode: historyError?.code
       });
 
       log(requestId, "=== Filter complete ===", { creditsUsed: creditCost, newBalance });

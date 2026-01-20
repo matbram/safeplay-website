@@ -59,7 +59,12 @@ export default function DashboardPage() {
 
   useEffect(() => {
     async function fetchHistory() {
-      if (!supabase || !user) return;
+      if (!supabase || !user) {
+        console.log("[Dashboard] No supabase or user, skipping fetch");
+        return;
+      }
+
+      console.log("[Dashboard] Fetching history for user:", user.id);
 
       try {
         // Fetch recent filter history with video details
@@ -82,27 +87,42 @@ export default function DashboardPage() {
           .order("created_at", { ascending: false })
           .limit(5);
 
+        console.log("[Dashboard] Query result:", {
+          count: history?.length,
+          error: error?.message,
+          errorCode: error?.code,
+          items: history?.map(h => ({
+            id: h.id,
+            video_id: h.video_id,
+            hasVideo: !!h.videos,
+            title: (h.videos as { title?: string } | null)?.title
+          }))
+        });
+
         if (!error && history) {
-          setRecentVideos(history as unknown as FilterHistoryItem[]);
+          // Filter out items with missing video data
+          const validHistory = history.filter(h => h.video_id !== null);
+          console.log("[Dashboard] Valid items:", validHistory.length, "of", history.length);
+          setRecentVideos(validHistory as unknown as FilterHistoryItem[]);
 
           // Calculate stats
           const thisMonth = new Date();
           thisMonth.setDate(1);
           thisMonth.setHours(0, 0, 0, 0);
 
-          const totalVideos = history.length;
-          const totalMinutes = history.reduce((acc: number, h: { videos?: { duration_seconds?: number } }) => {
+          const totalVideos = validHistory.length;
+          const totalMinutes = validHistory.reduce((acc: number, h: { videos?: { duration_seconds?: number } }) => {
             const duration = h.videos?.duration_seconds || 0;
             return acc + Math.ceil(duration / 60);
           }, 0);
-          const thisMonthCount = history.filter(
+          const thisMonthCount = validHistory.filter(
             (h: { created_at: string }) => new Date(h.created_at) >= thisMonth
           ).length;
 
           setStats({ totalVideos, totalMinutes, thisMonth: thisMonthCount });
         }
       } catch (err) {
-        console.error("Error fetching history:", err);
+        console.error("[Dashboard] Error fetching history:", err);
       } finally {
         setLoadingHistory(false);
       }
