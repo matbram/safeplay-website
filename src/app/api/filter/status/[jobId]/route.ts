@@ -360,6 +360,7 @@ export async function GET(
 
 function calculateCreditCost(durationSeconds: number): number {
   // 1 credit per minute of video, minimum 1 credit
-  const minutes = Math.ceil(durationSeconds / 60);
+  // Round at 30 seconds (Math.round rounds at 0.5 = 30 seconds)
+  const minutes = Math.round(durationSeconds / 60);
   return Math.max(1, minutes);
 }
