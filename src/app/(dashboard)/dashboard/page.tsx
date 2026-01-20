@@ -140,14 +140,20 @@ export default function DashboardPage() {
   }
 
   const planTier = user?.subscription_tier || "free";
-  const totalCredits = planQuotas[planTier] || 30;
+  const planQuota = planQuotas[planTier] || 30;
   const availableCredits = credits?.available_credits || 0;
   const usedCredits = credits?.used_this_period || 0;
   const rolloverCredits = credits?.rollover_credits || 0;
-  // Calculate percentage based on actual usage (used / (used + available))
-  // This handles cases where admin adds/removes credits properly
+
+  // Calculate base vs bonus credits
+  // Base credits deplete first, then bonus kicks in
   const effectiveTotal = availableCredits + usedCredits;
-  const creditPercentage = effectiveTotal > 0 ? Math.round((usedCredits / effectiveTotal) * 100) : 0;
+  const bonusTotal = Math.max(0, effectiveTotal - planQuota);
+  const baseRemaining = Math.max(0, planQuota - usedCredits);
+  const bonusRemaining = Math.max(0, availableCredits - baseRemaining);
+
+  // Percentage is based on base plan usage only (capped at 100%)
+  const creditPercentage = Math.min(100, Math.round((usedCredits / planQuota) * 100));
 
   const periodEnd = credits?.period_end ? new Date(credits.period_end) : new Date();
   const daysUntilReset = Math.max(0, Math.ceil((periodEnd.getTime() - Date.now()) / (1000 * 60 * 60 * 24)));
@@ -188,14 +194,14 @@ export default function DashboardPage() {
             <div className="flex items-end justify-between">
               <div>
                 <p className="text-3xl font-bold">
-                  {availableCredits}
+                  {baseRemaining}
                   <span className="text-lg font-normal text-muted-foreground">
                     {" "}
-                    / {effectiveTotal}
+                    / {planQuota}
                   </span>
                 </p>
                 <p className="text-sm text-muted-foreground">
-                  credits remaining this month
+                  plan credits remaining
                 </p>
               </div>
               <div className="text-right">
@@ -206,6 +212,15 @@ export default function DashboardPage() {
             </div>
 
             <Progress value={creditPercentage} className="h-3" />
+
+            {bonusTotal > 0 && (
+              <div className="flex items-center justify-between pt-1 text-sm">
+                <span className="text-muted-foreground">Bonus credits</span>
+                <span className="font-medium text-green-600 dark:text-green-400">
+                  +{bonusRemaining} available
+                </span>
+              </div>
+            )}
 
             <div className="grid grid-cols-2 gap-4 pt-2">
               <div className="flex items-center gap-2">
