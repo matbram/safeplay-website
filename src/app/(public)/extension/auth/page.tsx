@@ -90,24 +90,51 @@ function ExtensionAuthContent() {
 
       // Send credentials to extension
       try {
-        // Build the auth payload matching extension expectations
+        const availableCredits = userProfile?.credits?.available ?? 0;
+        const usedThisPeriod = userProfile?.credits?.used_this_period ?? 0;
+        const tier = userProfile?.subscription_tier || "free";
+
+        // Plan allocation based on tier
+        const planAllocation = tier === "free" ? 30 : tier === "individual" ? 750 : tier === "family" ? 1500 : 3750;
+        const percentConsumed = planAllocation > 0 ? Math.round((usedThisPeriod / planAllocation) * 100) : 0;
+
+        // Build the auth payload matching extension expectations exactly
         const authPayload = {
           type: "AUTH_TOKEN",
-          access_token: session.access_token,
-          refresh_token: session.refresh_token,
+          token: session.access_token,
+          refreshToken: session.refresh_token,
           expiresAt: session.expires_at, // Unix timestamp in seconds
+          userId: session.user.id,
+          tier: tier,
           user: {
             id: session.user.id,
             email: session.user.email,
-            display_name: userProfile?.display_name || session.user.email?.split("@")[0],
+            full_name: userProfile?.display_name || session.user.email?.split("@")[0],
+            avatar_url: null,
           },
           subscription: {
-            tier: userProfile?.subscription_tier || "free",
+            id: session.user.id,
+            user_id: session.user.id,
+            plan_id: tier,
             status: userProfile?.subscription_status || "active",
+            plans: {
+              id: tier,
+              name: tier.charAt(0).toUpperCase() + tier.slice(1),
+              monthly_credits: planAllocation,
+            },
           },
-          credits: userProfile?.credits || {
-            available: 0,
-            used_this_period: 0,
+          userCredits: {
+            user_id: session.user.id,
+            available_credits: availableCredits,
+            used_this_period: usedThisPeriod,
+            rollover_credits: 0,
+          },
+          credits: {
+            available: availableCredits,
+            used_this_period: usedThisPeriod,
+            plan_allocation: planAllocation,
+            percent_consumed: percentConsumed,
+            plan: tier,
           },
         };
 
