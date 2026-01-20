@@ -29,7 +29,7 @@ export async function GET(request: NextRequest) {
         type,
         description,
         created_at,
-        profiles!credit_transactions_user_id_fkey(email, full_name)
+        profiles!credit_transactions_user_id_fkey(email, display_name)
       `,
         { count: "exact" }
       );
@@ -58,7 +58,7 @@ export async function GET(request: NextRequest) {
     let filteredTransactions = transactions || [];
     if (search) {
       filteredTransactions = filteredTransactions.filter((tx) => {
-        const profile = tx.profiles as unknown as { email: string; full_name: string | null } | null;
+        const profile = tx.profiles as unknown as { email: string; display_name: string | null } | null;
         return profile?.email?.toLowerCase().includes(search.toLowerCase());
       });
     }

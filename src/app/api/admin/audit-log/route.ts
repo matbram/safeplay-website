@@ -35,7 +35,7 @@ export async function GET(request: NextRequest) {
         user_agent,
         created_at,
         admin_id,
-        profiles!admin_audit_log_admin_id_fkey(full_name, email)
+        profiles!admin_audit_log_admin_id_fkey(display_name, email)
       `,
         { count: "exact" }
       );

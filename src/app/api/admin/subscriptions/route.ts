@@ -9,55 +9,61 @@ export async function GET(request: NextRequest) {
 
     const supabase = createServiceClient();
 
-    // Get all subscriptions with user and plan details
-    const { data: subscriptions, error } = await supabase
-      .from("subscriptions")
-      .select(
-        `
-        id,
-        user_id,
-        plan_id,
-        status,
-        stripe_customer_id,
-        stripe_subscription_id,
-        current_period_start,
-        current_period_end,
-        cancel_at_period_end,
-        profiles!subscriptions_user_id_fkey(email, full_name),
-        plans(name, price_cents, credits_per_month)
-      `
-      )
+    // Get all users with subscription info from profiles (subscription data is in profiles table)
+    const { data: profiles, error: profilesError } = await supabase
+      .from("profiles")
+      .select("*")
       .order("created_at", { ascending: false });
 
-    if (error) {
-      console.error("Subscriptions fetch error:", error);
+    if (profilesError) {
+      console.error("Profiles fetch error:", profilesError);
       return NextResponse.json(
         { error: "Failed to fetch subscriptions" },
         { status: 500 }
       );
     }
 
+    // Get plans for pricing info
+    const { data: plans } = await supabase.from("plans").select("*");
+    const plansMap = new Map<string, { name: string; price_cents: number; credits_per_month: number }>();
+    plans?.forEach(p => plansMap.set(p.id, p));
+
+    // Format subscriptions from profiles
+    const subscriptions = (profiles || []).map(profile => {
+      const plan = plansMap.get(profile.subscription_tier);
+      return {
+        id: profile.id,
+        user_id: profile.id,
+        plan_id: profile.subscription_tier,
+        status: profile.subscription_status,
+        stripe_customer_id: profile.stripe_customer_id,
+        stripe_subscription_id: profile.stripe_subscription_id,
+        current_period_start: null,
+        current_period_end: null,
+        cancel_at_period_end: false,
+        profiles: { email: profile.email, full_name: profile.display_name },
+        plans: plan || null,
+      };
+    });
+
     // Calculate stats
-    const totalSubs = subscriptions?.length || 0;
-    const activePaid =
-      subscriptions?.filter(
-        (s) => s.status === "active" && s.plan_id !== "free"
-      ).length || 0;
+    const totalSubs = subscriptions.length;
+    const activePaid = subscriptions.filter(
+      (s) => s.status === "active" && s.plan_id !== "free"
+    ).length;
 
     // Calculate MRR
-    const mrr =
-      subscriptions
-        ?.filter((s) => s.status === "active" && s.plan_id !== "free")
-        .reduce((sum, s) => {
-          const plan = s.plans as unknown as { price_cents: number } | null;
-          return sum + (plan?.price_cents || 0);
-        }, 0) || 0;
+    const mrr = subscriptions
+      .filter((s) => s.status === "active" && s.plan_id !== "free")
+      .reduce((sum, s) => {
+        return sum + (s.plans?.price_cents || 0);
+      }, 0);
 
     // Churn rate placeholder (would need historical data)
     const churnRate = 0;
 
     return NextResponse.json({
-      subscriptions: subscriptions || [],
+      subscriptions,
       stats: {
         total: totalSubs,
         active: activePaid,

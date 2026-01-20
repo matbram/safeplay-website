@@ -57,24 +57,38 @@ export async function GET(request: NextRequest) {
       );
     }
 
+    // Get credit balances for all users
+    const userIds = (profiles || []).map(p => p.id);
+    const { data: creditBalances } = await supabase
+      .from("credit_balances")
+      .select("user_id, available_credits, used_this_period")
+      .in("user_id", userIds);
+
+    // Create lookup map for credits
+    const creditsMap = new Map<string, { available_credits: number; used_this_period: number }>();
+    creditBalances?.forEach(cb => creditsMap.set(cb.user_id, cb));
+
     // Format response to match expected structure
-    const users = (profiles || []).map(profile => ({
-      id: profile.id,
-      email: profile.email,
-      full_name: profile.display_name, // Map display_name to full_name for UI compatibility
-      avatar_url: null,
-      created_at: profile.created_at,
-      subscription: {
-        plan_id: profile.subscription_tier,
-        status: profile.subscription_status,
-        stripe_customer_id: profile.stripe_customer_id,
-        stripe_subscription_id: profile.stripe_subscription_id,
-      },
-      credits: {
-        available_credits: profile.monthly_quota,
-        used_this_period: 0, // Not tracked in this schema
-      },
-    }));
+    const users = (profiles || []).map(profile => {
+      const credits = creditsMap.get(profile.id);
+      return {
+        id: profile.id,
+        email: profile.email,
+        full_name: profile.display_name,
+        avatar_url: null,
+        created_at: profile.created_at,
+        subscription: {
+          plan_id: profile.subscription_tier,
+          status: profile.subscription_status,
+          stripe_customer_id: profile.stripe_customer_id,
+          stripe_subscription_id: profile.stripe_subscription_id,
+        },
+        credits: {
+          available_credits: credits?.available_credits ?? profile.monthly_quota,
+          used_this_period: credits?.used_this_period ?? 0,
+        },
+      };
+    });
 
     return NextResponse.json({
       users,

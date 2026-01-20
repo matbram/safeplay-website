@@ -17,7 +17,7 @@ export async function GET(request: NextRequest) {
         role,
         permissions,
         created_at,
-        profiles!admin_roles_user_id_fkey(email, full_name)
+        profiles!admin_roles_user_id_fkey(email, display_name)
       `
       )
       .order("created_at", { ascending: false });

@@ -63,7 +63,7 @@ export async function GET(
           is_pinned,
           created_at,
           admin_id,
-          profiles!admin_notes_admin_id_fkey(full_name, email)
+          profiles!admin_notes_admin_id_fkey(display_name, email)
         `
         )
         .eq("user_id", userId)
@@ -141,13 +141,13 @@ export async function PATCH(
     const body = await request.json();
     const supabase = createServiceClient();
 
-    // Only allow updating certain fields
-    const allowedFields = ["full_name"];
+    // Only allow updating certain fields (map full_name to display_name)
     const filteredUpdates: Record<string, unknown> = {};
-    for (const field of allowedFields) {
-      if (body[field] !== undefined) {
-        filteredUpdates[field] = body[field];
-      }
+    if (body.full_name !== undefined) {
+      filteredUpdates.display_name = body.full_name;
+    }
+    if (body.display_name !== undefined) {
+      filteredUpdates.display_name = body.display_name;
     }
 
     if (Object.keys(filteredUpdates).length === 0) {

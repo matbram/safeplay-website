@@ -12,7 +12,7 @@ export async function GET() {
     // Get dashboard stats
     const [
       usersResult,
-      subscriptionsResult,
+      paidSubscriptionsResult,
       creditsResult,
       ticketsResult,
       newUsersToday,
@@ -24,12 +24,12 @@ export async function GET() {
       // Total users
       supabase.from("profiles").select("id", { count: "exact", head: true }),
 
-      // Active paid subscriptions
+      // Active paid subscriptions (from profiles table)
       supabase
-        .from("subscriptions")
+        .from("profiles")
         .select("id", { count: "exact", head: true })
-        .eq("status", "active")
-        .neq("plan_id", "free"),
+        .eq("subscription_status", "active")
+        .neq("subscription_tier", "free"),
 
       // Total credits used this period
       supabase.from("credit_balances").select("used_this_period"),
@@ -65,18 +65,10 @@ export async function GET() {
           new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString()
         ),
 
-      // Recent users
+      // Recent users (from profiles directly)
       supabase
         .from("profiles")
-        .select(
-          `
-          id,
-          email,
-          full_name,
-          created_at,
-          subscriptions!inner(plan_id)
-        `
-        )
+        .select("id, email, display_name, subscription_tier, created_at")
         .order("created_at", { ascending: false })
         .limit(5),
 
@@ -104,15 +96,15 @@ export async function GET() {
     const recentUsers = recentUsersResult.data?.map((user) => ({
       id: user.id,
       email: user.email,
-      full_name: user.full_name,
+      full_name: user.display_name,
       created_at: user.created_at,
-      subscription_tier: (user.subscriptions as { plan_id: string }[])?.[0]?.plan_id || "free",
+      subscription_tier: user.subscription_tier || "free",
     })) || [];
 
     return NextResponse.json({
       stats: {
         total_users: usersResult.count || 0,
-        active_subscriptions: subscriptionsResult.count || 0,
+        active_subscriptions: paidSubscriptionsResult.count || 0,
         total_credits_used: totalCreditsUsed,
         open_tickets: ticketsResult.count || 0,
         new_users_today: newUsersToday.count || 0,

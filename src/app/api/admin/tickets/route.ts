@@ -37,7 +37,7 @@ export async function GET(request: NextRequest) {
         created_at,
         updated_at,
         resolved_at,
-        profiles!support_tickets_user_id_fkey(full_name, email)
+        profiles!support_tickets_user_id_fkey(display_name, email)
       `,
         { count: "exact" }
       );

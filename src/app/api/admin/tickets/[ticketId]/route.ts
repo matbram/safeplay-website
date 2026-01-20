@@ -20,7 +20,7 @@ export async function GET(
         .select(
           `
           *,
-          profiles!support_tickets_user_id_fkey(id, full_name, email)
+          profiles!support_tickets_user_id_fkey(id, display_name, email)
         `
         )
         .eq("id", ticketId)
@@ -36,7 +36,7 @@ export async function GET(
           is_internal,
           created_at,
           sender_id,
-          profiles!ticket_messages_sender_id_fkey(full_name, email)
+          profiles!ticket_messages_sender_id_fkey(display_name, email)
         `
         )
         .eq("ticket_id", ticketId)
