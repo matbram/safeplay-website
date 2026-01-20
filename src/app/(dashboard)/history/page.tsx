@@ -368,77 +368,98 @@ export default function HistoryPage() {
         </CardHeader>
         <CardContent className="p-0">
           <div className="divide-y">
-            {paginatedHistory.map((item) => (
-              <div
-                key={item.id}
-                className="flex items-center gap-4 p-4 hover:bg-accent/50 transition-colors"
-              >
-                {/* Checkbox */}
-                <Checkbox
-                  checked={selectedItems.includes(item.id)}
-                  onCheckedChange={(checked) =>
-                    handleSelectItem(item.id, checked as boolean)
-                  }
-                />
+            {paginatedHistory.map((item) => {
+              const youtubeUrl = item.videos?.youtube_id
+                ? `https://www.youtube.com/watch?v=${item.videos.youtube_id}`
+                : "#";
+              const thumbnailUrl =
+                item.videos?.thumbnail_url ||
+                (item.videos?.youtube_id
+                  ? `https://img.youtube.com/vi/${item.videos.youtube_id}/mqdefault.jpg`
+                  : null);
 
-                {/* Thumbnail */}
-                <div className="relative w-28 h-16 bg-muted rounded-lg overflow-hidden flex-shrink-0">
-                  {item.videos?.thumbnail_url ? (
-                    <img
-                      src={item.videos.thumbnail_url}
-                      alt={item.videos.title}
-                      className="w-full h-full object-cover"
-                    />
-                  ) : (
-                    <div className="absolute inset-0 flex items-center justify-center">
-                      <Play className="w-6 h-6 text-muted-foreground" />
-                    </div>
-                  )}
-                  <div className="absolute bottom-1 right-1 px-1 py-0.5 rounded bg-black/70 text-white text-xs">
-                    {formatDuration(item.videos?.duration_seconds || 0)}
-                  </div>
-                </div>
+              return (
+                <div
+                  key={item.id}
+                  className="flex items-center gap-4 p-4 hover:bg-accent/50 transition-colors"
+                >
+                  {/* Checkbox */}
+                  <Checkbox
+                    checked={selectedItems.includes(item.id)}
+                    onCheckedChange={(checked) =>
+                      handleSelectItem(item.id, checked as boolean)
+                    }
+                  />
 
-                {/* Info */}
-                <div className="flex-1 min-w-0">
-                  <p className="font-medium truncate">{item.videos?.title || "Unknown Video"}</p>
-                  <div className="flex flex-wrap items-center gap-2 mt-1">
-                    <span className="text-xs text-muted-foreground">
-                      {item.videos?.channel_name || "Unknown Channel"}
-                    </span>
-                    <span className="text-muted-foreground">-</span>
-                    <span className="text-xs text-muted-foreground">
-                      {formatDate(new Date(item.created_at))}
-                    </span>
-                    <Badge variant="muted" className="text-xs capitalize">
-                      {item.filter_type}
-                    </Badge>
-                    <span className="text-xs text-primary font-medium">
-                      {item.credits_used} credits
-                    </span>
-                  </div>
-                </div>
-
-                {/* Actions */}
-                <div className="flex items-center gap-2">
-                  <Button variant="ghost" size="sm">
-                    <Play className="w-4 h-4 mr-1" />
-                    Rewatch
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="text-error"
-                    onClick={() => {
-                      setSelectedItems([item.id]);
-                      handleDelete();
-                    }}
+                  {/* Thumbnail */}
+                  <a
+                    href={youtubeUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="relative w-28 h-16 bg-muted rounded-lg overflow-hidden flex-shrink-0 hover:opacity-80 transition-opacity"
                   >
-                    <Trash2 className="w-4 h-4" />
-                  </Button>
+                    {thumbnailUrl ? (
+                      <img
+                        src={thumbnailUrl}
+                        alt={item.videos?.title || "Video thumbnail"}
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      <div className="absolute inset-0 flex items-center justify-center">
+                        <Play className="w-6 h-6 text-muted-foreground" />
+                      </div>
+                    )}
+                    <div className="absolute bottom-1 right-1 px-1 py-0.5 rounded bg-black/70 text-white text-xs">
+                      {formatDuration(item.videos?.duration_seconds || 0)}
+                    </div>
+                  </a>
+
+                  {/* Info */}
+                  <div className="flex-1 min-w-0">
+                    <a
+                      href={youtubeUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="font-medium truncate block hover:text-primary transition-colors"
+                    >
+                      {item.videos?.title || "Unknown Video"}
+                    </a>
+                    <div className="flex flex-wrap items-center gap-2 mt-1">
+                      <span className="text-xs text-muted-foreground">
+                        {formatDate(new Date(item.created_at))}
+                      </span>
+                      <Badge variant="muted" className="text-xs capitalize">
+                        {item.filter_type}
+                      </Badge>
+                      <span className="text-xs text-primary font-medium">
+                        {item.credits_used} credits
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Actions */}
+                  <div className="flex items-center gap-2">
+                    <Button variant="ghost" size="sm" asChild>
+                      <a href={youtubeUrl} target="_blank" rel="noopener noreferrer">
+                        <Play className="w-4 h-4 mr-1" />
+                        Rewatch
+                      </a>
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="text-error"
+                      onClick={() => {
+                        setSelectedItems([item.id]);
+                        handleDelete();
+                      }}
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </Button>
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
 
           {filteredHistory.length === 0 && (
