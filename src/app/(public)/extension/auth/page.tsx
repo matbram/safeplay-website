@@ -7,6 +7,18 @@ import { Shield, CheckCircle, XCircle, Loader2, LogIn } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
 
+interface UserProfile {
+  id: string;
+  email: string;
+  display_name: string | null;
+  subscription_tier: string;
+  subscription_status: string;
+  credits: {
+    available: number;
+    used_this_period: number;
+  };
+}
+
 function ExtensionAuthContent() {
   const searchParams = useSearchParams();
   const [status, setStatus] = useState<"loading" | "success" | "error" | "unauthenticated">("loading");
@@ -41,34 +53,84 @@ function ExtensionAuthContent() {
 
       setUserEmail(session.user.email || null);
 
+      // Fetch user profile data
+      let userProfile: UserProfile | null = null;
+      try {
+        // Get profile data
+        const { data: profile } = await supabase
+          .from("profiles")
+          .select("id, email, display_name, subscription_tier, subscription_status")
+          .eq("id", session.user.id)
+          .single();
+
+        // Get credit balance
+        const { data: credits } = await supabase
+          .from("credit_balances")
+          .select("available_credits, used_this_period")
+          .eq("user_id", session.user.id)
+          .single();
+
+        if (profile) {
+          userProfile = {
+            id: profile.id,
+            email: profile.email,
+            display_name: profile.display_name,
+            subscription_tier: profile.subscription_tier || "free",
+            subscription_status: profile.subscription_status || "active",
+            credits: {
+              available: credits?.available_credits ?? 0,
+              used_this_period: credits?.used_this_period ?? 0,
+            },
+          };
+        }
+      } catch (err) {
+        console.error("Failed to fetch user profile:", err);
+        // Continue with basic auth even if profile fetch fails
+      }
+
       // Send credentials to extension
       try {
+        // Build the auth payload matching extension expectations
+        const authPayload = {
+          type: "AUTH_TOKEN",
+          access_token: session.access_token,
+          refresh_token: session.refresh_token,
+          expiresAt: session.expires_at, // Unix timestamp in seconds
+          user: {
+            id: session.user.id,
+            email: session.user.email,
+            display_name: userProfile?.display_name || session.user.email?.split("@")[0],
+          },
+          subscription: {
+            tier: userProfile?.subscription_tier || "free",
+            status: userProfile?.subscription_status || "active",
+          },
+          credits: userProfile?.credits || {
+            available: 0,
+            used_this_period: 0,
+          },
+        };
+
         // Try to communicate with the extension using chrome.runtime.sendMessage
-        if (typeof window !== "undefined" && (window as typeof window & { chrome?: { runtime?: { sendMessage: (id: string, message: unknown) => void } } }).chrome?.runtime?.sendMessage) {
-          const chrome = (window as typeof window & { chrome: { runtime: { sendMessage: (id: string, message: unknown) => void } } }).chrome;
-          chrome.runtime.sendMessage(extensionId, {
-            type: "AUTH_SUCCESS",
-            payload: {
-              accessToken: session.access_token,
-              refreshToken: session.refresh_token,
-              user: {
-                id: session.user.id,
-                email: session.user.email,
-              },
-              expiresAt: session.expires_at,
-            },
-          });
+        if (typeof window !== "undefined") {
+          const chromeRuntime = (window as typeof window & {
+            chrome?: {
+              runtime?: {
+                sendMessage: (id: string, message: unknown, callback?: (response: unknown) => void) => void
+              }
+            }
+          }).chrome?.runtime;
+
+          if (chromeRuntime?.sendMessage) {
+            chromeRuntime.sendMessage(extensionId, authPayload, (response) => {
+              console.log("Extension response:", response);
+            });
+          }
         }
 
         // Also store in localStorage as fallback for popup-based extensions
         localStorage.setItem("safeplay_extension_auth", JSON.stringify({
-          accessToken: session.access_token,
-          refreshToken: session.refresh_token,
-          user: {
-            id: session.user.id,
-            email: session.user.email,
-          },
-          expiresAt: session.expires_at,
+          ...authPayload,
           timestamp: Date.now(),
         }));
 
@@ -77,7 +139,7 @@ function ExtensionAuthContent() {
         // Auto-close after a short delay
         setTimeout(() => {
           window.close();
-        }, 3000);
+        }, 2000);
       } catch (err) {
         console.error("Failed to send auth to extension:", err);
         setError("Failed to communicate with extension");
@@ -134,12 +196,12 @@ function ExtensionAuthContent() {
           </p>
           <div className="mt-6 space-y-3">
             <Button className="w-full" asChild>
-              <Link href={`/login?next=/extension/auth?extensionId=${extensionId}`}>
+              <Link href={`/login?next=${encodeURIComponent(`/extension/auth?extensionId=${extensionId}`)}`}>
                 Sign In
               </Link>
             </Button>
             <Button variant="outline" className="w-full" asChild>
-              <Link href={`/signup?next=/extension/auth?extensionId=${extensionId}`}>
+              <Link href={`/signup?next=${encodeURIComponent(`/extension/auth?extensionId=${extensionId}`)}`}>
                 Create Account
               </Link>
             </Button>
