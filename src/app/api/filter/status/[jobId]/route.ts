@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import { createServiceClient } from "@/lib/supabase/server";
 import { authenticateRequest } from "@/lib/auth-helper";
 
 const ORCHESTRATOR_URL = process.env.ORCHESTRATION_API_URL || "https://safeplay-orchestrator-production.up.railway.app";
@@ -34,7 +34,7 @@ export async function GET(
       );
     }
 
-    const supabase = await createClient();
+    const supabase = createServiceClient();
 
     // Check if this job belongs to the user
     const { data: jobRecord, error: jobError } = await supabase
