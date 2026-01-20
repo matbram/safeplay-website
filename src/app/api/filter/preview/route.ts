@@ -62,7 +62,7 @@ export async function POST(request: NextRequest) {
         title: cachedVideo.title,
         channel_name: cachedVideo.channel_name,
         duration_seconds: cachedVideo.duration_seconds,
-        thumbnail_url: cachedVideo.thumbnail_url || `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`,
+        thumbnail_url: cachedVideo.thumbnail_url || `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`,
         credit_cost: 0, // Free for cached videos
         cached: true,
         has_transcript: true,
@@ -74,7 +74,7 @@ export async function POST(request: NextRequest) {
     let title = "Unknown Video";
     let channelName: string | null = null;
     let durationSeconds = 0;
-    let thumbnailUrl = `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`;
+    let thumbnailUrl = `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`;
 
     // Fetch YouTube metadata using internal API with page scraping fallback
     const scrapedData = await fetchYouTubeVideoInfo(videoId);
