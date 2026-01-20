@@ -422,7 +422,7 @@ export default function HistoryPage() {
                       rel="noopener noreferrer"
                       className="font-medium truncate block hover:text-primary transition-colors"
                     >
-                      {item.videos?.title || "Unknown Video"}
+                      {item.videos?.title || "Video"}
                     </a>
                     <div className="flex flex-wrap items-center gap-2 mt-1">
                       <span className="text-xs text-muted-foreground">

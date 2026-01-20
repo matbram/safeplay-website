@@ -286,51 +286,73 @@ export default function DashboardPage() {
             </div>
           ) : (
             <div className="space-y-4">
-              {recentVideos.map((video) => (
-                <div
-                  key={video.id}
-                  className="flex items-center gap-4 p-3 rounded-lg hover:bg-accent transition-colors"
-                >
-                  {/* Thumbnail */}
-                  <div className="relative w-24 h-14 bg-muted rounded-lg overflow-hidden flex-shrink-0">
-                    {video.videos?.thumbnail_url ? (
-                      <img
-                        src={video.videos.thumbnail_url}
-                        alt={video.videos.title}
-                        className="absolute inset-0 w-full h-full object-cover"
-                      />
-                    ) : (
-                      <div className="absolute inset-0 flex items-center justify-center">
-                        <Play className="w-6 h-6 text-muted-foreground" />
+              {recentVideos.map((video) => {
+                const youtubeUrl = video.videos?.youtube_id
+                  ? `https://www.youtube.com/watch?v=${video.videos.youtube_id}`
+                  : "#";
+                const thumbnailUrl =
+                  video.videos?.thumbnail_url ||
+                  (video.videos?.youtube_id
+                    ? `https://img.youtube.com/vi/${video.videos.youtube_id}/mqdefault.jpg`
+                    : null);
+
+                return (
+                  <div
+                    key={video.id}
+                    className="flex items-center gap-4 p-3 rounded-lg hover:bg-accent transition-colors"
+                  >
+                    {/* Thumbnail */}
+                    <a
+                      href={youtubeUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="relative w-24 h-14 bg-muted rounded-lg overflow-hidden flex-shrink-0 hover:opacity-80 transition-opacity"
+                    >
+                      {thumbnailUrl ? (
+                        <img
+                          src={thumbnailUrl}
+                          alt={video.videos?.title || "Video thumbnail"}
+                          className="absolute inset-0 w-full h-full object-cover"
+                        />
+                      ) : (
+                        <div className="absolute inset-0 flex items-center justify-center">
+                          <Play className="w-6 h-6 text-muted-foreground" />
+                        </div>
+                      )}
+                      <div className="absolute bottom-1 right-1 px-1.5 py-0.5 rounded bg-black/70 text-white text-xs">
+                        {formatDuration(video.videos?.duration_seconds || 0)}
                       </div>
-                    )}
-                    <div className="absolute bottom-1 right-1 px-1.5 py-0.5 rounded bg-black/70 text-white text-xs">
-                      {formatDuration(video.videos?.duration_seconds || 0)}
-                    </div>
-                  </div>
+                    </a>
 
-                  {/* Info */}
-                  <div className="flex-1 min-w-0">
-                    <p className="font-medium truncate">{video.videos?.title || "Untitled Video"}</p>
-                    <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
-                      <span>{formatDate(new Date(video.created_at))}</span>
-                      <span>-</span>
-                      <span>{video.credits_used} credits</span>
-                      <Badge variant="muted" className="text-xs capitalize">
-                        {video.filter_type}
-                      </Badge>
+                    {/* Info */}
+                    <div className="flex-1 min-w-0">
+                      <a
+                        href={youtubeUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="font-medium truncate block hover:text-primary transition-colors"
+                      >
+                        {video.videos?.title || "Video"}
+                      </a>
+                      <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
+                        <span>{formatDate(new Date(video.created_at))}</span>
+                        <span>{video.credits_used} credits</span>
+                        <Badge variant="muted" className="text-xs capitalize">
+                          {video.filter_type}
+                        </Badge>
+                      </div>
                     </div>
-                  </div>
 
-                  {/* Action */}
-                  <Button variant="ghost" size="sm" asChild>
-                    <Link href={`https://youtube.com/watch?v=${video.videos?.youtube_id}`} target="_blank">
-                      <Play className="w-4 h-4 mr-1" />
-                      Rewatch
-                    </Link>
-                  </Button>
-                </div>
-              ))}
+                    {/* Action */}
+                    <Button variant="ghost" size="sm" asChild>
+                      <a href={youtubeUrl} target="_blank" rel="noopener noreferrer">
+                        <Play className="w-4 h-4 mr-1" />
+                        Rewatch
+                      </a>
+                    </Button>
+                  </div>
+                );
+              })}
             </div>
           )}
         </CardContent>
