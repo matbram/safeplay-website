@@ -83,10 +83,11 @@ export async function GET(
         .select(
           `
           id,
+          video_id,
           filter_type,
           credits_used,
           created_at,
-          videos(youtube_id, title)
+          videos!filter_history_video_id_fkey(youtube_id, title)
         `
         )
         .eq("user_id", userId)
