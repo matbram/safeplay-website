@@ -99,11 +99,22 @@ function ExtensionAuthContent() {
         const percentConsumed = planAllocation > 0 ? Math.round((usedThisPeriod / planAllocation) * 100) : 0;
 
         // Build the auth payload matching extension expectations exactly
+        // IMPORTANT: expiresAt must be in MILLISECONDS for JS Date comparison
+        const expiresAtMs = (session.expires_at || 0) * 1000;
+
+        console.log("[ExtensionAuth] Building payload:", {
+          expiresAt_seconds: session.expires_at,
+          expiresAt_ms: expiresAtMs,
+          now_ms: Date.now(),
+          isExpired: expiresAtMs < Date.now(),
+          expiresIn_minutes: Math.round((expiresAtMs - Date.now()) / 60000)
+        });
+
         const authPayload = {
           type: "AUTH_TOKEN",
           token: session.access_token,
           refreshToken: session.refresh_token,
-          expiresAt: session.expires_at, // Unix timestamp in seconds
+          expiresAt: expiresAtMs, // Unix timestamp in MILLISECONDS for JS Date.now() comparison
           userId: session.user.id,
           tier: tier,
           user: {
