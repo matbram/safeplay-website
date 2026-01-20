@@ -28,11 +28,21 @@ export async function GET(request: NextRequest) {
         .from("profiles")
         .select("*", { count: "exact", head: true });
 
+      // Also get one profile to see what columns exist
+      const { data: sampleProfile, error: sampleError } = await supabase
+        .from("profiles")
+        .select("*")
+        .limit(1)
+        .single();
+
       return NextResponse.json({
         debug: true,
         serviceClientWorking: !countError,
         totalProfilesInDb: totalCount,
         countError: countError?.message || null,
+        sampleProfile: sampleProfile,
+        sampleError: sampleError?.message || null,
+        profileColumns: sampleProfile ? Object.keys(sampleProfile) : [],
         adminId: admin.id,
         supabaseUrl: process.env.NEXT_PUBLIC_SUPABASE_URL,
         hasServiceKey: !!process.env.SUPABASE_SERVICE_ROLE_KEY,
