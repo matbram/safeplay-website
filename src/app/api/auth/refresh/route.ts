@@ -12,8 +12,14 @@ function log(context: string, message: string, data?: Record<string, unknown>) {
  * POST /api/auth/refresh
  * Refreshes an access token using a refresh token
  *
- * Body:
- *   { refreshToken: string }
+ * Request Body:
+ *   { refresh_token: string }
+ *
+ * Success Response (200):
+ *   { access_token: string, refresh_token: string, expires_at: number }
+ *
+ * Error Response (400/401/500):
+ *   { error: string }
  */
 export async function POST(request: Request) {
   const requestId = Math.random().toString(36).substring(7);
@@ -22,14 +28,15 @@ export async function POST(request: Request) {
     log(requestId, "=== Token Refresh Request ===");
 
     const body = await request.json();
-    const { refreshToken } = body;
+    // Accept both snake_case (standard) and camelCase (legacy) for backwards compatibility
+    const refreshToken = body.refresh_token || body.refreshToken;
 
     log(requestId, "Request body", { hasRefreshToken: !!refreshToken, refreshTokenLength: refreshToken?.length });
 
     if (!refreshToken) {
       log(requestId, "Missing refresh token - returning 400");
       return NextResponse.json(
-        { error: "Missing refresh token" },
+        { error: "Refresh token is required" },
         { status: 400 }
       );
     }
@@ -42,7 +49,7 @@ export async function POST(request: Request) {
 
     log(requestId, "Calling Supabase refreshSession");
 
-    // Refresh the session
+    // Refresh the session using the provided refresh token
     const { data, error } = await supabase.auth.refreshSession({
       refresh_token: refreshToken,
     });
@@ -57,35 +64,29 @@ export async function POST(request: Request) {
     if (error || !data.session) {
       log(requestId, "Refresh failed", { error: error?.message });
       return NextResponse.json(
-        { error: error?.message || "Failed to refresh token" },
+        { error: "Invalid or expired refresh token" },
         { status: 401 }
       );
     }
 
-    // IMPORTANT: Convert expiresAt to milliseconds for JS Date.now() comparison
-    const expiresAtMs = (data.session.expires_at || 0) * 1000;
+    const expiresAt = data.session.expires_at || 0;
 
     log(requestId, "Refresh successful", {
-      expiresAt_seconds: data.session.expires_at,
-      expiresAt_ms: expiresAtMs,
-      expiresIn_minutes: Math.round((expiresAtMs - Date.now()) / 60000)
+      expires_at: expiresAt,
+      expiresIn_minutes: Math.round((expiresAt * 1000 - Date.now()) / 60000)
     });
 
-    // Return with field names matching what the extension expects
+    // Return tokens in snake_case format as expected by the Chrome extension
     return NextResponse.json({
-      token: data.session.access_token,         // Extension expects 'token', not 'accessToken'
-      refreshToken: data.session.refresh_token,
-      expiresAt: expiresAtMs,                   // In milliseconds
-      user: {
-        id: data.session.user.id,
-        email: data.session.user.email,
-      },
+      access_token: data.session.access_token,
+      refresh_token: data.session.refresh_token,
+      expires_at: expiresAt, // Unix timestamp in seconds
     });
   } catch (error) {
     log(requestId, "EXCEPTION", { error: String(error) });
     console.error("Token refresh error:", error);
     return NextResponse.json(
-      { error: "Internal server error" },
+      { error: "An unexpected error occurred" },
       { status: 500 }
     );
   }
