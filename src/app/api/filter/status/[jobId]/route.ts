@@ -256,7 +256,7 @@ export async function GET(
           title: data.video?.title || data.transcript.title || "Unknown Video",
           channel_name: data.video?.channel_name || null,
           duration_seconds: durationSeconds,
-          thumbnail_url: `https://img.youtube.com/vi/${jobRecord.youtube_id}/maxresdefault.jpg`,
+          thumbnail_url: `https://img.youtube.com/vi/${jobRecord.youtube_id}/hqdefault.jpg`,
           transcript: data.transcript,
           cached_at: new Date().toISOString(),
         }, { onConflict: 'youtube_id' })
@@ -334,7 +334,7 @@ export async function GET(
           title: data.video?.title || data.transcript.title || "Unknown Video",
           channel_name: data.video?.channel_name || null,
           duration_seconds: durationSeconds,
-          thumbnail_url: `https://img.youtube.com/vi/${jobRecord.youtube_id}/maxresdefault.jpg`,
+          thumbnail_url: `https://img.youtube.com/vi/${jobRecord.youtube_id}/hqdefault.jpg`,
         },
         history_id: historyEntry?.id,
         credits_used: creditCost,

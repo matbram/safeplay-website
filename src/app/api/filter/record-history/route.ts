@@ -132,7 +132,7 @@ export async function POST(request: NextRequest) {
           title: videoTitle || "Video",
           channel_name: videoChannel || null,
           duration_seconds: duration_seconds || null,
-          thumbnail_url: `https://img.youtube.com/vi/${youtube_id}/maxresdefault.jpg`,
+          thumbnail_url: `https://img.youtube.com/vi/${youtube_id}/hqdefault.jpg`,
           cached_at: new Date().toISOString(),
         })
         .select()

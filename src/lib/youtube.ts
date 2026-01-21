@@ -87,7 +87,7 @@ async function scrapeYouTubeMetadata(videoId: string): Promise<{
               durationSeconds: parseInt(videoDetails.lengthSeconds || "0", 10),
               thumbnailUrl:
                 videoDetails.thumbnail?.thumbnails?.slice(-1)[0]?.url ||
-                `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`,
+                `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`,
             };
           }
         } catch (parseError) {
@@ -118,7 +118,7 @@ async function scrapeYouTubeMetadata(videoId: string): Promise<{
                   title: primaryInfo.title.runs[0].text,
                   channelName: secondaryInfo?.owner?.videoOwnerRenderer?.title?.runs?.[0]?.text || null,
                   durationSeconds: 0, // Not available in this structure
-                  thumbnailUrl: `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`,
+                  thumbnailUrl: `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`,
                 };
               }
             }
@@ -177,7 +177,7 @@ export async function fetchYouTubeVideoInfo(videoId: string): Promise<{
           durationSeconds: parseInt(videoDetails.lengthSeconds, 10),
           thumbnailUrl:
             videoDetails.thumbnail?.thumbnails?.slice(-1)[0]?.url ||
-            `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`,
+            `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`,
         };
       }
     }
