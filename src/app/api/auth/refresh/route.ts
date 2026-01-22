@@ -31,7 +31,12 @@ export async function POST(request: Request) {
     // Accept both snake_case (standard) and camelCase (legacy) for backwards compatibility
     const refreshToken = body.refresh_token || body.refreshToken;
 
-    log(requestId, "Request body", { hasRefreshToken: !!refreshToken, refreshTokenLength: refreshToken?.length });
+    log(requestId, "Request body", {
+      hasRefreshToken: !!refreshToken,
+      refreshTokenLength: refreshToken?.length,
+      refreshTokenPreview: refreshToken ? `${refreshToken.substring(0, 20)}...` : null,
+      bodyKeys: Object.keys(body)
+    });
 
     if (!refreshToken) {
       log(requestId, "Missing refresh token - returning 400");
@@ -62,9 +67,24 @@ export async function POST(request: Request) {
     });
 
     if (error || !data.session) {
-      log(requestId, "Refresh failed", { error: error?.message });
+      log(requestId, "Refresh failed", {
+        error: error?.message,
+        code: (error as { code?: string })?.code,
+        status: (error as { status?: number })?.status
+      });
+
+      // Provide specific error messages for common cases
+      const errorCode = (error as { code?: string })?.code;
+      let errorMessage = "Invalid or expired refresh token";
+
+      if (errorCode === "refresh_token_already_used") {
+        errorMessage = "Refresh token has already been used. Please log in again.";
+      } else if (error?.message?.includes("expired")) {
+        errorMessage = "Refresh token has expired. Please log in again.";
+      }
+
       return NextResponse.json(
-        { error: "Invalid or expired refresh token" },
+        { error: errorMessage, code: errorCode },
         { status: 401 }
       );
     }
