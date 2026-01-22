@@ -51,6 +51,87 @@ function ExtensionAuthContent() {
         return;
       }
 
+      // === AUTH-DEBUG: Log full session structure to diagnose refresh token issue ===
+      // Railway logs should show this when a user authenticates via extension
+      console.log("[AUTH-DEBUG] === Session Analysis ===");
+      console.log("[AUTH-DEBUG] Session object keys:", Object.keys(session));
+      console.log("[AUTH-DEBUG] session.refresh_token (snake_case):", {
+        exists: !!session.refresh_token,
+        value: session.refresh_token ? session.refresh_token.substring(0, 30) + "..." : "UNDEFINED",
+        length: session.refresh_token?.length ?? 0,
+        type: typeof session.refresh_token,
+      });
+      // Check for camelCase variant (different Supabase SDK versions)
+      const sessionAny = session as Record<string, unknown>;
+      console.log("[AUTH-DEBUG] session.refreshToken (camelCase check):", {
+        exists: !!sessionAny.refreshToken,
+        value: sessionAny.refreshToken ? String(sessionAny.refreshToken).substring(0, 30) + "..." : "UNDEFINED",
+        length: typeof sessionAny.refreshToken === "string" ? sessionAny.refreshToken.length : 0,
+      });
+      console.log("[AUTH-DEBUG] session.access_token:", {
+        exists: !!session.access_token,
+        length: session.access_token?.length ?? 0,
+      });
+      console.log("[AUTH-DEBUG] session.expires_at:", session.expires_at);
+      console.log("[AUTH-DEBUG] session.user.id:", session.user?.id);
+      // Log full session structure (with sensitive data truncated)
+      const safeSessionLog = {
+        ...session,
+        access_token: session.access_token ? `${session.access_token.substring(0, 20)}... (${session.access_token.length} chars)` : "MISSING",
+        refresh_token: session.refresh_token ? `${session.refresh_token.substring(0, 20)}... (${session.refresh_token.length} chars)` : "MISSING",
+      };
+      console.log("[AUTH-DEBUG] Full session structure:", JSON.stringify(safeSessionLog, null, 2));
+      // === END AUTH-DEBUG ===
+
+      // === AUTH-DEBUG: Send to server for Railway logs ===
+      try {
+        // Gather cookie info to debug what Supabase is reading
+        const cookieInfo = document.cookie.split(";").map(c => {
+          const [name, value] = c.trim().split("=");
+          const isSupabaseCookie = name?.includes("sb-") || name?.includes("supabase");
+          return {
+            name,
+            valueLength: value?.length ?? 0,
+            // Only show preview for Supabase-related cookies
+            valuePreview: isSupabaseCookie ? (value?.substring(0, 100) + (value?.length > 100 ? "..." : "")) : "[non-supabase]",
+            isSupabaseCookie,
+          };
+        }).filter(c => c.isSupabaseCookie || c.name?.includes("auth"));
+
+        const debugPayload = {
+          source: "extension-auth-page-session",
+          cookies: cookieInfo,
+          sessionKeys: Object.keys(session),
+          refreshTokenSnake: {
+            exists: !!session.refresh_token,
+            value: session.refresh_token ? session.refresh_token.substring(0, 30) + "..." : "UNDEFINED",
+            length: session.refresh_token?.length ?? 0,
+            type: typeof session.refresh_token,
+            fullValue: session.refresh_token?.length < 50 ? session.refresh_token : undefined, // Only log full value if suspiciously short
+          },
+          refreshTokenCamel: {
+            exists: !!sessionAny.refreshToken,
+            value: sessionAny.refreshToken ? String(sessionAny.refreshToken).substring(0, 30) + "..." : "UNDEFINED",
+            length: typeof sessionAny.refreshToken === "string" ? sessionAny.refreshToken.length : 0,
+          },
+          accessTokenInfo: {
+            exists: !!session.access_token,
+            length: session.access_token?.length ?? 0,
+          },
+          expiresAt: session.expires_at,
+          userId: session.user?.id,
+          fullSession: safeSessionLog,
+        };
+        fetch("/api/auth/debug-session", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(debugPayload),
+        }).catch(() => {}); // Fire and forget, don't block auth flow
+      } catch {
+        // Ignore debug errors
+      }
+      // === END SERVER DEBUG ===
+
       setUserEmail(session.user.email || null);
 
       // Fetch user profile data
@@ -110,6 +191,16 @@ function ExtensionAuthContent() {
           expiresIn_minutes: Math.round((expiresAtMs - Date.now()) / 60000)
         });
 
+        // === AUTH-DEBUG: Log the exact values being assigned to the payload ===
+        console.log("[AUTH-DEBUG] === Payload Construction ===");
+        console.log("[AUTH-DEBUG] Value being assigned to authPayload.refreshToken:", {
+          source: "session.refresh_token",
+          value: session.refresh_token ? session.refresh_token.substring(0, 30) + "..." : "UNDEFINED/NULL",
+          length: session.refresh_token?.length ?? 0,
+          first12Chars: session.refresh_token?.substring(0, 12) ?? "N/A",
+        });
+        // === END AUTH-DEBUG ===
+
         const authPayload = {
           type: "AUTH_TOKEN",
           token: session.access_token,
@@ -148,6 +239,50 @@ function ExtensionAuthContent() {
             plan: tier,
           },
         };
+
+        // === AUTH-DEBUG: Log final payload being sent to extension ===
+        console.log("[AUTH-DEBUG] === Final Payload Being Sent ===");
+        console.log("[AUTH-DEBUG] authPayload.token length:", authPayload.token?.length ?? 0);
+        console.log("[AUTH-DEBUG] authPayload.refreshToken:", {
+          length: authPayload.refreshToken?.length ?? 0,
+          preview: authPayload.refreshToken ? authPayload.refreshToken.substring(0, 30) + "..." : "MISSING",
+          first12Chars: authPayload.refreshToken?.substring(0, 12) ?? "N/A",
+        });
+        console.log("[AUTH-DEBUG] authPayload.expiresAt:", authPayload.expiresAt);
+        console.log("[AUTH-DEBUG] authPayload.userId:", authPayload.userId);
+        // Check if something looks wrong
+        if (authPayload.refreshToken && authPayload.refreshToken.length < 50) {
+          console.error("[AUTH-DEBUG] WARNING: refreshToken is suspiciously short!", {
+            length: authPayload.refreshToken.length,
+            fullValue: authPayload.refreshToken, // Safe to log if it's only 12 chars
+            expectedLength: "100+ characters",
+          });
+        }
+        // === END AUTH-DEBUG ===
+
+        // === AUTH-DEBUG: Send payload info to server for Railway logs ===
+        try {
+          fetch("/api/auth/debug-session", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              source: "extension-auth-page-payload",
+              authPayload: {
+                tokenLength: authPayload.token?.length ?? 0,
+                refreshToken: {
+                  length: authPayload.refreshToken?.length ?? 0,
+                  preview: authPayload.refreshToken ? authPayload.refreshToken.substring(0, 30) + "..." : "MISSING",
+                  fullValue: authPayload.refreshToken?.length < 50 ? authPayload.refreshToken : undefined,
+                },
+                expiresAt: authPayload.expiresAt,
+                userId: authPayload.userId,
+              },
+            }),
+          }).catch(() => {}); // Fire and forget
+        } catch {
+          // Ignore debug errors
+        }
+        // === END SERVER DEBUG ===
 
         // Try to communicate with the extension using chrome.runtime.sendMessage
         if (typeof window !== "undefined") {

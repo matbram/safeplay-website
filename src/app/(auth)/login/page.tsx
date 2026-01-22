@@ -61,10 +61,37 @@ function LoginForm() {
         return;
       }
 
-      const { error } = await supabase.auth.signInWithPassword({
+      const { data, error } = await supabase.auth.signInWithPassword({
         email: formData.email,
         password: formData.password,
       });
+
+      // === AUTH-DEBUG: Log what Supabase returns immediately after login ===
+      if (data?.session) {
+        console.log("[AUTH-DEBUG] Fresh login session:", {
+          refresh_token_length: data.session.refresh_token?.length,
+          refresh_token_preview: data.session.refresh_token?.substring(0, 30) + "...",
+          access_token_length: data.session.access_token?.length,
+        });
+        // Send to server for Railway logs
+        fetch("/api/auth/debug-session", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            source: "login-page-fresh-session",
+            refreshTokenSnake: {
+              exists: !!data.session.refresh_token,
+              length: data.session.refresh_token?.length ?? 0,
+              fullValue: data.session.refresh_token?.length < 50 ? data.session.refresh_token : undefined,
+              preview: data.session.refresh_token?.substring(0, 30) + "...",
+            },
+            accessTokenInfo: {
+              length: data.session.access_token?.length ?? 0,
+            },
+          }),
+        }).catch(() => {});
+      }
+      // === END AUTH-DEBUG ===
 
       if (error) {
         if (error.message.includes("Invalid login credentials")) {
