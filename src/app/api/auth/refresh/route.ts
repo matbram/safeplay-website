@@ -33,24 +33,12 @@ export async function POST(request: Request) {
 
     log(requestId, "Request body", { hasRefreshToken: !!refreshToken, refreshTokenLength: refreshToken?.length });
 
-    // === AUTH-DEBUG: Log detailed info about the incoming refresh token ===
-    log(requestId, "AUTH-DEBUG: Incoming refresh token details", {
+    // Note: Supabase refresh tokens are short (~12 chars) - this is normal.
+    // The access_token is the long JWT, not the refresh_token.
+    log(requestId, "Refresh token received", {
       length: refreshToken?.length ?? 0,
-      preview: refreshToken ? refreshToken.substring(0, 30) + "..." : "MISSING",
-      first12Chars: refreshToken?.substring(0, 12) ?? "N/A",
-      isSuspiciouslyShort: refreshToken && refreshToken.length < 50,
-      bodyKeys: Object.keys(body),
-      body_refresh_token_length: body.refresh_token?.length ?? 0,
-      body_refreshToken_length: body.refreshToken?.length ?? 0,
+      preview: refreshToken ? refreshToken.substring(0, 12) : "MISSING",
     });
-    if (refreshToken && refreshToken.length < 50) {
-      log(requestId, "AUTH-DEBUG: WARNING - Refresh token is too short! Full value:", {
-        fullToken: refreshToken,
-        expectedLength: "100+ characters from Supabase",
-        actualLength: refreshToken.length,
-      });
-    }
-    // === END AUTH-DEBUG ===
 
     if (!refreshToken) {
       log(requestId, "Missing refresh token - returning 400");
