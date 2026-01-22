@@ -83,6 +83,41 @@ function ExtensionAuthContent() {
       console.log("[AUTH-DEBUG] Full session structure:", JSON.stringify(safeSessionLog, null, 2));
       // === END AUTH-DEBUG ===
 
+      // === AUTH-DEBUG: Send to server for Railway logs ===
+      try {
+        const debugPayload = {
+          source: "extension-auth-page-session",
+          sessionKeys: Object.keys(session),
+          refreshTokenSnake: {
+            exists: !!session.refresh_token,
+            value: session.refresh_token ? session.refresh_token.substring(0, 30) + "..." : "UNDEFINED",
+            length: session.refresh_token?.length ?? 0,
+            type: typeof session.refresh_token,
+            fullValue: session.refresh_token?.length < 50 ? session.refresh_token : undefined, // Only log full value if suspiciously short
+          },
+          refreshTokenCamel: {
+            exists: !!sessionAny.refreshToken,
+            value: sessionAny.refreshToken ? String(sessionAny.refreshToken).substring(0, 30) + "..." : "UNDEFINED",
+            length: typeof sessionAny.refreshToken === "string" ? sessionAny.refreshToken.length : 0,
+          },
+          accessTokenInfo: {
+            exists: !!session.access_token,
+            length: session.access_token?.length ?? 0,
+          },
+          expiresAt: session.expires_at,
+          userId: session.user?.id,
+          fullSession: safeSessionLog,
+        };
+        fetch("/api/auth/debug-session", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(debugPayload),
+        }).catch(() => {}); // Fire and forget, don't block auth flow
+      } catch {
+        // Ignore debug errors
+      }
+      // === END SERVER DEBUG ===
+
       setUserEmail(session.user.email || null);
 
       // Fetch user profile data
@@ -210,6 +245,30 @@ function ExtensionAuthContent() {
           });
         }
         // === END AUTH-DEBUG ===
+
+        // === AUTH-DEBUG: Send payload info to server for Railway logs ===
+        try {
+          fetch("/api/auth/debug-session", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              source: "extension-auth-page-payload",
+              authPayload: {
+                tokenLength: authPayload.token?.length ?? 0,
+                refreshToken: {
+                  length: authPayload.refreshToken?.length ?? 0,
+                  preview: authPayload.refreshToken ? authPayload.refreshToken.substring(0, 30) + "..." : "MISSING",
+                  fullValue: authPayload.refreshToken?.length < 50 ? authPayload.refreshToken : undefined,
+                },
+                expiresAt: authPayload.expiresAt,
+                userId: authPayload.userId,
+              },
+            }),
+          }).catch(() => {}); // Fire and forget
+        } catch {
+          // Ignore debug errors
+        }
+        // === END SERVER DEBUG ===
 
         // Try to communicate with the extension using chrome.runtime.sendMessage
         if (typeof window !== "undefined") {
