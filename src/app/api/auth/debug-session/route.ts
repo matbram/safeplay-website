@@ -14,6 +14,18 @@ export async function POST(request: Request) {
 
     console.log(`[${timestamp}] [AUTH-DEBUG-SESSION] === Debug Session Data Received ===`);
     console.log(`[${timestamp}] [AUTH-DEBUG-SESSION] Source: ${body.source || "unknown"}`);
+
+    // Log cookies if provided
+    if (body.cookies) {
+      console.log(`[${timestamp}] [AUTH-DEBUG-SESSION] === Browser Cookies ===`);
+      for (const cookie of body.cookies) {
+        console.log(`[${timestamp}] [AUTH-DEBUG-SESSION] Cookie: ${cookie.name} (${cookie.valueLength} chars)`);
+        if (cookie.valuePreview && cookie.valuePreview !== "[non-supabase]") {
+          console.log(`[${timestamp}] [AUTH-DEBUG-SESSION]   Preview: ${cookie.valuePreview}`);
+        }
+      }
+    }
+
     console.log(`[${timestamp}] [AUTH-DEBUG-SESSION] Session keys: ${JSON.stringify(body.sessionKeys)}`);
     console.log(`[${timestamp}] [AUTH-DEBUG-SESSION] refresh_token (snake_case):`, JSON.stringify(body.refreshTokenSnake));
     console.log(`[${timestamp}] [AUTH-DEBUG-SESSION] refreshToken (camelCase):`, JSON.stringify(body.refreshTokenCamel));

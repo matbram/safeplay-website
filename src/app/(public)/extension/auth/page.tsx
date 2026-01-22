@@ -85,8 +85,22 @@ function ExtensionAuthContent() {
 
       // === AUTH-DEBUG: Send to server for Railway logs ===
       try {
+        // Gather cookie info to debug what Supabase is reading
+        const cookieInfo = document.cookie.split(";").map(c => {
+          const [name, value] = c.trim().split("=");
+          const isSupabaseCookie = name?.includes("sb-") || name?.includes("supabase");
+          return {
+            name,
+            valueLength: value?.length ?? 0,
+            // Only show preview for Supabase-related cookies
+            valuePreview: isSupabaseCookie ? (value?.substring(0, 100) + (value?.length > 100 ? "..." : "")) : "[non-supabase]",
+            isSupabaseCookie,
+          };
+        }).filter(c => c.isSupabaseCookie || c.name?.includes("auth"));
+
         const debugPayload = {
           source: "extension-auth-page-session",
+          cookies: cookieInfo,
           sessionKeys: Object.keys(session),
           refreshTokenSnake: {
             exists: !!session.refresh_token,
