@@ -3,6 +3,13 @@ import { createClient } from "@/lib/supabase/server";
 import { authenticateRequest } from "@/lib/auth-helper";
 import { fetchYouTubeVideoInfo } from "@/lib/youtube";
 
+// Logging helper for consistent format
+function log(context: string, message: string, data?: Record<string, unknown>) {
+  const timestamp = new Date().toISOString();
+  const dataStr = data ? ` | ${JSON.stringify(data)}` : '';
+  console.log(`[${timestamp}] [FILTER-PREVIEW] [${context}] ${message}${dataStr}`);
+}
+
 // Calculate credit cost: 1 credit per minute, minimum 1 credit
 // Round at 30 seconds (Math.round rounds at 0.5 = 30 seconds)
 function calculateCreditCost(durationSeconds: number): number {
@@ -12,6 +19,8 @@ function calculateCreditCost(durationSeconds: number): number {
 }
 
 export async function POST(request: NextRequest) {
+  const requestId = Math.random().toString(36).substring(7);
+
   try {
     // Authenticate via session cookie or bearer token
     const auth = await authenticateRequest(request);
@@ -33,11 +42,14 @@ export async function POST(request: NextRequest) {
     }
 
     if (!videoId) {
+      log(requestId, "Invalid video ID");
       return NextResponse.json(
         { error: "Invalid YouTube URL or ID" },
         { status: 400 }
       );
     }
+
+    log(requestId, "=== Preview Request ===", { videoId });
 
     // First, check if we have this video cached in our database with a transcript
     const { data: cachedVideo } = await supabase
@@ -56,6 +68,11 @@ export async function POST(request: NextRequest) {
     const userCredits = creditBalance?.available_credits || 0;
 
     if (cachedVideo && cachedVideo.transcript) {
+      log(requestId, "Returning cached video", {
+        title: cachedVideo.title,
+        duration: cachedVideo.duration_seconds,
+        hasTranscript: true
+      });
       // Video is cached with transcript - free to rewatch
       return NextResponse.json({
         youtube_id: cachedVideo.youtube_id,
@@ -71,20 +88,29 @@ export async function POST(request: NextRequest) {
     }
 
     // Video not cached - fetch metadata from YouTube
+    log(requestId, "Video not cached, fetching from YouTube", { videoId });
+
     let title = "Unknown Video";
     let channelName: string | null = null;
     let durationSeconds = 0;
     let thumbnailUrl = `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`;
 
-    // Fetch YouTube metadata using internal API with page scraping fallback
-    const scrapedData = await fetchYouTubeVideoInfo(videoId);
+    // Fetch YouTube metadata using Data API with fallbacks
+    const youtubeData = await fetchYouTubeVideoInfo(videoId);
 
-    if (scrapedData) {
-      title = scrapedData.title;
-      channelName = scrapedData.channelName;
-      durationSeconds = scrapedData.durationSeconds;
-      thumbnailUrl = scrapedData.thumbnailUrl;
+    if (youtubeData) {
+      title = youtubeData.title;
+      channelName = youtubeData.channelName;
+      durationSeconds = youtubeData.durationSeconds;
+      thumbnailUrl = youtubeData.thumbnailUrl;
+      log(requestId, "YouTube fetch result", {
+        title,
+        channel: channelName,
+        duration: durationSeconds,
+        source: "fetchYouTubeVideoInfo"
+      });
     } else {
+      log(requestId, "fetchYouTubeVideoInfo returned null, trying oEmbed fallback");
       // Fallback to oEmbed (doesn't have duration but at least gets title)
       try {
         const oembedUrl = `https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${videoId}&format=json`;
@@ -95,13 +121,23 @@ export async function POST(request: NextRequest) {
           title = oembedData.title || title;
           channelName = oembedData.author_name || null;
           thumbnailUrl = oembedData.thumbnail_url || thumbnailUrl;
+          log(requestId, "oEmbed fallback result", { title, channel: channelName });
+        } else {
+          log(requestId, "oEmbed request failed", { status: oembedResponse.status });
         }
       } catch (err) {
-        console.error("Failed to fetch oEmbed data:", err);
+        log(requestId, "oEmbed exception", { error: String(err) });
       }
     }
 
     const creditCost = calculateCreditCost(durationSeconds);
+
+    log(requestId, "Preview response", {
+      title,
+      duration: durationSeconds,
+      creditCost,
+      durationUnavailable: durationSeconds === 0
+    });
 
     return NextResponse.json({
       youtube_id: videoId,
@@ -120,6 +156,7 @@ export async function POST(request: NextRequest) {
       }),
     });
   } catch (error) {
+    log(requestId, "EXCEPTION", { error: String(error) });
     console.error("Filter preview error:", error);
     return NextResponse.json(
       { error: "Failed to fetch video info" },

@@ -161,7 +161,7 @@ async function scrapeYouTubeMetadata(videoId: string): Promise<{
           const videoDetails = playerData.videoDetails;
 
           if (videoDetails) {
-            return {
+            const result = {
               title: videoDetails.title || "Unknown Video",
               channelName: videoDetails.author || null,
               durationSeconds: parseInt(videoDetails.lengthSeconds || "0", 10),
@@ -169,6 +169,12 @@ async function scrapeYouTubeMetadata(videoId: string): Promise<{
                 videoDetails.thumbnail?.thumbnails?.slice(-1)[0]?.url ||
                 `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`,
             };
+            console.log("[YouTube API] Page scraping succeeded (ytInitialPlayerResponse):", {
+              videoId,
+              title: result.title,
+              duration: result.durationSeconds
+            });
+            return result;
           }
         } catch (parseError) {
           console.error("Failed to parse ytInitialPlayerResponse:", parseError);
@@ -194,6 +200,10 @@ async function scrapeYouTubeMetadata(videoId: string): Promise<{
               const secondaryInfo = content.videoSecondaryInfoRenderer;
 
               if (primaryInfo?.title?.runs?.[0]?.text) {
+                console.log("[YouTube API] Page scraping partial success (ytInitialData - no duration):", {
+                  videoId,
+                  title: primaryInfo.title.runs[0].text
+                });
                 return {
                   title: primaryInfo.title.runs[0].text,
                   channelName: secondaryInfo?.owner?.videoOwnerRenderer?.title?.runs?.[0]?.text || null,
