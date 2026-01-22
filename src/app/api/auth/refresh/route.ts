@@ -13,13 +13,23 @@ function log(context: string, message: string, data?: Record<string, unknown>) {
  * Refreshes an access token using a refresh token
  *
  * Request Body:
- *   { refresh_token: string }
+ *   { refresh_token: string } OR { refreshToken: string }
  *
  * Success Response (200):
- *   { access_token: string, refresh_token: string, expires_at: number }
+ *   Returns BOTH formats for compatibility:
+ *   {
+ *     // snake_case format
+ *     access_token: string,
+ *     refresh_token: string,
+ *     expires_at: number (seconds),
+ *     // camelCase format (matching initial login payload)
+ *     token: string,
+ *     refreshToken: string,
+ *     expiresAt: number (milliseconds)
+ *   }
  *
  * Error Response (400/401/500):
- *   { error: string }
+ *   { error: string, code?: string }
  */
 export async function POST(request: Request) {
   const requestId = Math.random().toString(36).substring(7);
@@ -89,18 +99,33 @@ export async function POST(request: Request) {
       );
     }
 
-    const expiresAt = data.session.expires_at || 0;
+    // expires_at from Supabase is in seconds
+    const expiresAtSeconds = data.session.expires_at || 0;
+    // Convert to milliseconds for JS Date.now() comparison (matching login page format)
+    const expiresAtMs = expiresAtSeconds * 1000;
 
     log(requestId, "Refresh successful", {
-      expires_at: expiresAt,
-      expiresIn_minutes: Math.round((expiresAt * 1000 - Date.now()) / 60000)
+      expires_at_seconds: expiresAtSeconds,
+      expires_at_ms: expiresAtMs,
+      expiresIn_minutes: Math.round((expiresAtMs - Date.now()) / 60000)
     });
 
-    // Return tokens in snake_case format as expected by the Chrome extension
+    // Return BOTH formats for compatibility with different extension versions
+    // The extension may expect either snake_case or camelCase depending on version
     return NextResponse.json({
+      // snake_case format (API standard)
       access_token: data.session.access_token,
       refresh_token: data.session.refresh_token,
-      expires_at: expiresAt, // Unix timestamp in seconds
+      expires_at: expiresAtSeconds,
+      // camelCase format (matching initial login payload from extension auth page)
+      token: data.session.access_token,
+      refreshToken: data.session.refresh_token,
+      expiresAt: expiresAtMs, // milliseconds for JS Date.now() comparison
+      // Include user info for convenience
+      user: {
+        id: data.session.user.id,
+        email: data.session.user.email,
+      },
     });
   } catch (error) {
     log(requestId, "EXCEPTION", { error: String(error) });
