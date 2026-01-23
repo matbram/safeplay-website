@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
 import { authenticateRequest } from "@/lib/auth-helper";
+import { fetchWithRetry, isRetryableError } from "@/lib/retry";
 
 const ORCHESTRATOR_URL = process.env.ORCHESTRATION_API_URL || "https://safeplay-orchestrator-production.up.railway.app";
 const ORCHESTRATOR_API_KEY = process.env.ORCHESTRATION_API_KEY;
@@ -96,7 +97,7 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // Video not in our cache - call orchestrator to start filtering
+    // Video not in our cache - call orchestrator to start filtering with retry logic
     log(requestId, "Video not cached - calling orchestrator", { url: ORCHESTRATOR_URL });
 
     const headers: Record<string, string> = {
@@ -107,11 +108,40 @@ export async function POST(request: NextRequest) {
       headers["Authorization"] = `Bearer ${ORCHESTRATOR_API_KEY}`;
     }
 
-    const response = await fetch(`${ORCHESTRATOR_URL}/api/filter`, {
-      method: "POST",
-      headers,
-      body: JSON.stringify({ youtube_id }),
-    });
+    let response: Response;
+    try {
+      response = await fetchWithRetry(
+        `${ORCHESTRATOR_URL}/api/filter`,
+        {
+          method: "POST",
+          headers,
+          body: JSON.stringify({ youtube_id }),
+        },
+        {
+          maxAttempts: 3,
+          initialDelayMs: 1000,
+          onRetry: (attempt, error, delayMs) => {
+            log(requestId, `Retry attempt ${attempt}`, { error: error.message, delayMs });
+          },
+        }
+      );
+    } catch (fetchError) {
+      const errorMsg = fetchError instanceof Error ? fetchError.message : String(fetchError);
+      log(requestId, "Failed to reach orchestrator after retries", { error: errorMsg });
+
+      // If retryable error, return 503 so client can retry
+      if (isRetryableError(fetchError)) {
+        return NextResponse.json(
+          { error: "Orchestrator temporarily unavailable. Please try again.", error_code: "ORCHESTRATOR_UNAVAILABLE" },
+          { status: 503 }
+        );
+      }
+
+      return NextResponse.json(
+        { error: "Failed to start filtering" },
+        { status: 502 }
+      );
+    }
 
     const data = await response.json();
     log(requestId, "Orchestrator response", {
