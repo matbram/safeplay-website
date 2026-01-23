@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
 import { authenticateRequest } from "@/lib/auth-helper";
 import { fetchYouTubeDuration } from "@/lib/youtube";
+import { fetchWithRetry, isRetryableError } from "@/lib/retry";
 
 const ORCHESTRATOR_URL = process.env.ORCHESTRATION_API_URL || "https://safeplay-orchestrator-production.up.railway.app";
 const ORCHESTRATOR_API_KEY = process.env.ORCHESTRATION_API_KEY;
@@ -71,7 +72,7 @@ export async function GET(
       });
     }
 
-    // Poll orchestrator for current status
+    // Poll orchestrator for current status with retry logic
     log(requestId, "Polling orchestrator for status", { url: ORCHESTRATOR_URL, jobId });
 
     const headers: Record<string, string> = {};
@@ -80,10 +81,36 @@ export async function GET(
       headers["Authorization"] = `Bearer ${ORCHESTRATOR_API_KEY}`;
     }
 
-    const response = await fetch(`${ORCHESTRATOR_URL}/api/jobs/${jobId}`, {
-      method: "GET",
-      headers,
-    });
+    let response: Response;
+    try {
+      response = await fetchWithRetry(
+        `${ORCHESTRATOR_URL}/api/jobs/${jobId}`,
+        { method: "GET", headers },
+        {
+          maxAttempts: 3,
+          initialDelayMs: 1000,
+          onRetry: (attempt, error, delayMs) => {
+            log(requestId, `Retry attempt ${attempt}`, { error: error.message, delayMs });
+          },
+        }
+      );
+    } catch (fetchError) {
+      const errorMsg = fetchError instanceof Error ? fetchError.message : String(fetchError);
+      log(requestId, "Failed to reach orchestrator after retries", { error: errorMsg });
+
+      // If retryable error, return 503 so client can retry
+      if (isRetryableError(fetchError)) {
+        return NextResponse.json(
+          { error: "Orchestrator temporarily unavailable", error_code: "ORCHESTRATOR_UNAVAILABLE", retry: true },
+          { status: 503 }
+        );
+      }
+
+      return NextResponse.json(
+        { error: "Failed to check status" },
+        { status: 502 }
+      );
+    }
 
     const data = await response.json();
     log(requestId, "Orchestrator status response", {

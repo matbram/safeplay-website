@@ -44,6 +44,27 @@ interface FilterResult {
   history_id?: string;
 }
 
+// SSE event data types
+interface SSEEventData {
+  type?: string;
+  status?: string;
+  progress?: number;
+  message?: string;
+  error?: string;
+  error_code?: string;
+  credits_used?: number;
+  history_id?: string;
+  video?: {
+    youtube_id: string;
+    title: string;
+    channel_name: string | null;
+    duration_seconds: number;
+    thumbnail_url: string;
+  };
+  transcript?: unknown;
+  cached?: boolean;
+}
+
 export default function FilterPage() {
   const { credits, loading: userLoading, refetch: refetchUser } = useUser();
   const [url, setUrl] = useState("");
@@ -58,15 +79,21 @@ export default function FilterPage() {
   const [filterResult, setFilterResult] = useState<FilterResult | null>(null);
   const [jobId, setJobId] = useState<string | null>(null);
   const pollingRef = useRef<NodeJS.Timeout | null>(null);
+  const eventSourceRef = useRef<EventSource | null>(null);
+  const sseReconnectAttempts = useRef(0);
+  const maxSSEReconnectAttempts = 5;
 
   // Get real user credits
   const userCredits = credits?.available_credits || 0;
 
-  // Cleanup polling on unmount
+  // Cleanup SSE and polling on unmount
   useEffect(() => {
     return () => {
       if (pollingRef.current) {
         clearInterval(pollingRef.current);
+      }
+      if (eventSourceRef.current) {
+        eventSourceRef.current.close();
       }
     };
   }, []);
@@ -114,7 +141,194 @@ export default function FilterPage() {
     }
   };
 
+  // Handle successful completion from either SSE or polling
+  const handleCompletion = (data: SSEEventData) => {
+    // Stop any active connections
+    if (pollingRef.current) {
+      clearInterval(pollingRef.current);
+      pollingRef.current = null;
+    }
+    if (eventSourceRef.current) {
+      eventSourceRef.current.close();
+      eventSourceRef.current = null;
+    }
+
+    setFilterResult({
+      video: {
+        youtube_id: data.video?.youtube_id || videoPreview?.youtube_id || "",
+        title: data.video?.title || videoPreview?.title || "Video",
+        channel_name: data.video?.channel_name || null,
+        duration_seconds: data.video?.duration_seconds || 0,
+        thumbnail_url: data.video?.thumbnail_url || videoPreview?.thumbnail_url || "",
+        credit_cost: data.credits_used || 0,
+      },
+      credits_used: data.credits_used || 0,
+      history_id: data.history_id,
+    });
+    setProgress(100);
+    setProgressMessage("Complete!");
+    setStatus("success");
+    refetchUser();
+  };
+
+  // Handle error from either SSE or polling
+  const handleError = (errorMessage: string) => {
+    // Stop any active connections
+    if (pollingRef.current) {
+      clearInterval(pollingRef.current);
+      pollingRef.current = null;
+    }
+    if (eventSourceRef.current) {
+      eventSourceRef.current.close();
+      eventSourceRef.current = null;
+    }
+
+    setError(errorMessage);
+    setStatus("error");
+  };
+
+  // Start SSE connection for real-time updates
+  const startSSE = (currentJobId: string) => {
+    // Clear any existing connections
+    if (pollingRef.current) {
+      clearInterval(pollingRef.current);
+      pollingRef.current = null;
+    }
+    if (eventSourceRef.current) {
+      eventSourceRef.current.close();
+      eventSourceRef.current = null;
+    }
+
+    console.log("[SSE] Starting SSE connection for job:", currentJobId);
+
+    // First, try to fetch the SSE endpoint to check if it returns JSON (already completed)
+    // or establishes an SSE connection
+    fetch(`/api/filter/status/${currentJobId}/stream`)
+      .then(async (response) => {
+        const contentType = response.headers.get("Content-Type") || "";
+
+        // If JSON response, job is already completed
+        if (contentType.includes("application/json")) {
+          const data = await response.json();
+          console.log("[SSE] Got JSON response:", data.status);
+
+          if (!response.ok) {
+            // Check if we should retry
+            if (response.status === 503 && data.retry) {
+              console.log("[SSE] Orchestrator unavailable, falling back to polling");
+              startPolling(currentJobId);
+              return;
+            }
+            handleError(data.error || "Failed to check status");
+            return;
+          }
+
+          if (data.status === "completed") {
+            handleCompletion(data);
+          } else if (data.status === "failed") {
+            handleError(data.error || "Processing failed");
+          } else {
+            // Still processing, start EventSource
+            connectEventSource(currentJobId);
+          }
+          return;
+        }
+
+        // If we got a streaming response, we need to use EventSource
+        // Close this response and connect via EventSource
+        connectEventSource(currentJobId);
+      })
+      .catch((err) => {
+        console.error("[SSE] Initial fetch failed, falling back to polling:", err);
+        startPolling(currentJobId);
+      });
+  };
+
+  // Connect EventSource for SSE streaming
+  const connectEventSource = (currentJobId: string) => {
+    console.log("[SSE] Connecting EventSource for job:", currentJobId);
+    sseReconnectAttempts.current = 0;
+
+    const eventSource = new EventSource(`/api/filter/status/${currentJobId}/stream`);
+    eventSourceRef.current = eventSource;
+
+    // Set up a timeout for the entire SSE connection (6 minutes)
+    const connectionTimeout = setTimeout(() => {
+      console.log("[SSE] Connection timeout");
+      eventSource.close();
+      handleError("Processing timed out. Please try again.");
+    }, 6 * 60 * 1000);
+
+    eventSource.onmessage = (event) => {
+      try {
+        const data: SSEEventData = JSON.parse(event.data);
+        console.log("[SSE] Event received:", data.type || data.status);
+
+        // Reset reconnect attempts on successful message
+        sseReconnectAttempts.current = 0;
+
+        // Update progress
+        if (data.progress !== undefined) {
+          setProgress(data.progress);
+        }
+        if (data.message) {
+          setProgressMessage(data.message);
+        }
+
+        // Update video info if available
+        if (data.video && videoPreview) {
+          setVideoPreview({
+            ...videoPreview,
+            title: data.video.title || videoPreview.title,
+            channel_name: data.video.channel_name,
+            duration_seconds: data.video.duration_seconds || videoPreview.duration_seconds,
+          });
+        }
+
+        // Handle completion
+        if (data.type === "complete" || data.status === "completed") {
+          clearTimeout(connectionTimeout);
+          handleCompletion(data);
+          return;
+        }
+
+        // Handle error
+        if (data.type === "error" || data.status === "failed") {
+          clearTimeout(connectionTimeout);
+          handleError(data.error || "Processing failed");
+          return;
+        }
+      } catch (err) {
+        console.error("[SSE] Failed to parse event data:", err);
+      }
+    };
+
+    eventSource.onerror = (err) => {
+      console.error("[SSE] Connection error:", err);
+
+      // EventSource automatically tries to reconnect, but we track attempts
+      sseReconnectAttempts.current++;
+
+      if (sseReconnectAttempts.current >= maxSSEReconnectAttempts) {
+        console.log("[SSE] Max reconnect attempts reached, falling back to polling");
+        clearTimeout(connectionTimeout);
+        eventSource.close();
+        eventSourceRef.current = null;
+        startPolling(currentJobId);
+      }
+    };
+
+    // Handle explicit close/end
+    eventSource.addEventListener("close", () => {
+      console.log("[SSE] Connection closed by server");
+      clearTimeout(connectionTimeout);
+    });
+  };
+
+  // Fallback polling for when SSE fails
   const startPolling = (currentJobId: string) => {
+    console.log("[POLLING] Starting polling for job:", currentJobId);
+
     // Clear any existing polling
     if (pollingRef.current) {
       clearInterval(pollingRef.current);
@@ -128,8 +342,8 @@ export default function FilterPage() {
 
       if (attempts > maxAttempts) {
         clearInterval(pollingRef.current!);
-        setError("Processing timed out. Please try again.");
-        setStatus("error");
+        pollingRef.current = null;
+        handleError("Processing timed out. Please try again.");
         return;
       }
 
@@ -139,8 +353,8 @@ export default function FilterPage() {
 
         if (!response.ok) {
           clearInterval(pollingRef.current!);
-          setError(data.error || "Processing failed");
-          setStatus("error");
+          pollingRef.current = null;
+          handleError(data.error || "Processing failed");
           return;
         }
 
@@ -158,30 +372,13 @@ export default function FilterPage() {
         }
 
         if (data.status === "completed") {
-          clearInterval(pollingRef.current!);
-          setFilterResult({
-            video: {
-              youtube_id: data.video?.youtube_id || videoPreview?.youtube_id || "",
-              title: data.video?.title || videoPreview?.title || "Video",
-              channel_name: data.video?.channel_name || null,
-              duration_seconds: data.video?.duration_seconds || 0,
-              thumbnail_url: data.video?.thumbnail_url || videoPreview?.thumbnail_url || "",
-              credit_cost: data.credits_used || 0,
-            },
-            credits_used: data.credits_used || 0,
-            history_id: data.history_id,
-          });
-          setStatus("success");
-          // Refresh user credits
-          refetchUser();
+          handleCompletion(data);
         } else if (data.status === "failed") {
-          clearInterval(pollingRef.current!);
-          setError(data.error || "Processing failed");
-          setStatus("error");
+          handleError(data.error || "Processing failed");
         }
       } catch (err) {
         // Don't stop polling on network errors, just log
-        console.error("Polling error:", err);
+        console.error("[POLLING] Error:", err);
       }
     }, 2000); // Poll every 2 seconds
   };
@@ -244,10 +441,10 @@ export default function FilterPage() {
         return;
       }
 
-      // Processing started, begin polling
+      // Processing started, begin SSE (with polling fallback)
       if (data.status === "processing" && data.job_id) {
         setJobId(data.job_id);
-        startPolling(data.job_id);
+        startSSE(data.job_id);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to start filtering");
@@ -267,10 +464,16 @@ export default function FilterPage() {
   };
 
   const handleReset = () => {
-    // Stop any active polling
+    // Stop any active connections
     if (pollingRef.current) {
       clearInterval(pollingRef.current);
+      pollingRef.current = null;
     }
+    if (eventSourceRef.current) {
+      eventSourceRef.current.close();
+      eventSourceRef.current = null;
+    }
+    sseReconnectAttempts.current = 0;
     setUrl("");
     setStatus("idle");
     setVideoPreview(null);
