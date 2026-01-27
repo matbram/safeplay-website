@@ -161,9 +161,9 @@ const SAFE_WORDS = new Set([
   "mississippi",
 ]);
 
-// Padding settings (matching Chrome extension)
-const PADDING_BEFORE_MS = 100;
-const PADDING_AFTER_MS = 30;
+// Padding settings (matching Chrome extension defaults from user preferences)
+const PADDING_BEFORE_MS = 150;
+const PADDING_AFTER_MS = 50;
 const MERGE_THRESHOLD_MS = 100;
 
 // Check if word is safe (not profanity despite containing profanity substring)

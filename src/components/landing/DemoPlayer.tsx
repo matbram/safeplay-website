@@ -71,7 +71,12 @@ interface YTPlayer {
 
 // Bleep sound constants
 const BLEEP_FREQUENCY = 1000; // 1kHz - classic TV censor bleep
-const BLEEP_VOLUME = 0.3;
+const BLEEP_VOLUME = 0.35;
+const BLEEP_ATTACK = 0.008; // 8ms attack - fast like real censor bleeps
+const BLEEP_RELEASE = 0.025; // 25ms release - slightly slower to avoid clicks
+
+// Fade timing constants (matching Chrome extension)
+const FADE_BUFFER = 0.08; // 80ms - start fading/bleeping before interval begins
 
 // Profanity list for demo (subset of full list)
 const PROFANITY_MAP: Map<string, MuteInterval["severity"]> = new Map([
@@ -306,29 +311,49 @@ export function DemoPlayer({
     }
   }, []);
 
-  // Start bleep sound
+  // Start bleep sound - classic TV censor bleep
   const startBleep = useCallback(() => {
     if (!bleepContextRef.current || !bleepGainRef.current) return;
     if (bleepOscillatorRef.current) return; // Already bleeping
 
+    // Create main oscillator
     const oscillator = bleepContextRef.current.createOscillator();
     oscillator.type = "sine";
     oscillator.frequency.value = BLEEP_FREQUENCY;
-    oscillator.connect(bleepGainRef.current);
 
-    // Fast attack
+    // Create second oscillator slightly detuned for richness (like Chrome extension)
+    const oscillator2 = bleepContextRef.current.createOscillator();
+    oscillator2.type = "sine";
+    oscillator2.frequency.value = BLEEP_FREQUENCY * 1.001;
+
+    // Create mixer for second oscillator
+    const mixer = bleepContextRef.current.createGain();
+    mixer.gain.value = 0.5;
+
+    // Connect oscillators
+    oscillator.connect(bleepGainRef.current);
+    oscillator2.connect(mixer);
+    mixer.connect(bleepGainRef.current);
+
+    // Fast attack envelope
     const now = bleepContextRef.current.currentTime;
     bleepGainRef.current.gain.setValueAtTime(0, now);
     bleepGainRef.current.gain.linearRampToValueAtTime(
       BLEEP_VOLUME,
-      now + 0.008
+      now + BLEEP_ATTACK
     );
 
+    // Start both oscillators
     oscillator.start(now);
+    oscillator2.start(now);
+
+    // Store references for cleanup
     bleepOscillatorRef.current = oscillator;
+    (oscillator as unknown as { _osc2: OscillatorNode; _mixer: GainNode })._osc2 = oscillator2;
+    (oscillator as unknown as { _osc2: OscillatorNode; _mixer: GainNode })._mixer = mixer;
   }, []);
 
-  // Stop bleep sound
+  // Stop bleep sound with smooth release
   const stopBleep = useCallback(() => {
     if (
       !bleepContextRef.current ||
@@ -342,17 +367,27 @@ export function DemoPlayer({
       bleepGainRef.current.gain.value,
       now
     );
-    bleepGainRef.current.gain.linearRampToValueAtTime(0, now + 0.025);
+    bleepGainRef.current.gain.linearRampToValueAtTime(0, now + BLEEP_RELEASE);
 
     const oscillator = bleepOscillatorRef.current;
+    const osc2 = (oscillator as unknown as { _osc2?: OscillatorNode })._osc2;
+    const mixer = (oscillator as unknown as { _mixer?: GainNode })._mixer;
+
     setTimeout(() => {
       try {
         oscillator.stop();
         oscillator.disconnect();
+        if (osc2) {
+          osc2.stop();
+          osc2.disconnect();
+        }
+        if (mixer) {
+          mixer.disconnect();
+        }
       } catch {
         // Already stopped
       }
-    }, 30);
+    }, BLEEP_RELEASE * 1000 + 10);
 
     bleepOscillatorRef.current = null;
   }, []);
@@ -365,12 +400,31 @@ export function DemoPlayer({
         if (time >= interval.start && time <= interval.end) {
           return interval;
         }
-        if (interval.start > time) break;
+        if (interval.start > time + FADE_BUFFER) break;
       }
       return null;
     },
     []
   );
+
+  // Find approaching interval (within fade buffer before start)
+  const findApproachingInterval = useCallback(
+    (time: number): MuteInterval | null => {
+      const intervals = muteIntervalsRef.current;
+      for (const interval of intervals) {
+        const fadeStartTime = interval.start - FADE_BUFFER;
+        if (time >= fadeStartTime && time < interval.start) {
+          return interval;
+        }
+        if (interval.start > time + FADE_BUFFER) break;
+      }
+      return null;
+    },
+    []
+  );
+
+  // Track which intervals have been counted to avoid double-counting
+  const countedIntervalsRef = useRef<Set<number>>(new Set());
 
   // Check current time and apply filtering - uses refs to avoid stale closures
   const checkCurrentTime = useCallback(() => {
@@ -380,18 +434,44 @@ export function DemoPlayer({
     setCurrentTime(time);
 
     const activeInterval = findActiveInterval(time);
+    const approachingInterval = findApproachingInterval(time);
 
     if (activeInterval) {
+      // We're inside a mute interval
       if (!isMutedRef.current) {
-        // Start muting
         playerRef.current.mute();
         setIsMuted(true);
         setCurrentFilteredWord(activeInterval.word);
-        setFilterCount((prev) => prev + 1);
-        setShowNotification(true);
 
-        // Hide notification after 2 seconds
-        setTimeout(() => setShowNotification(false), 2000);
+        // Count this interval if not already counted
+        const intervalIndex = muteIntervalsRef.current.indexOf(activeInterval);
+        if (!countedIntervalsRef.current.has(intervalIndex)) {
+          countedIntervalsRef.current.add(intervalIndex);
+          setFilterCount((prev) => prev + 1);
+          setShowNotification(true);
+          setTimeout(() => setShowNotification(false), 2000);
+        }
+
+        // Start bleep if in bleep mode
+        if (filterModeRef.current === "bleep") {
+          startBleep();
+        }
+      }
+    } else if (approachingInterval) {
+      // We're approaching an interval - start muting/bleeping early
+      if (!isMutedRef.current) {
+        playerRef.current.mute();
+        setIsMuted(true);
+        setCurrentFilteredWord(approachingInterval.word);
+
+        // Count this interval if not already counted
+        const intervalIndex = muteIntervalsRef.current.indexOf(approachingInterval);
+        if (!countedIntervalsRef.current.has(intervalIndex)) {
+          countedIntervalsRef.current.add(intervalIndex);
+          setFilterCount((prev) => prev + 1);
+          setShowNotification(true);
+          setTimeout(() => setShowNotification(false), 2000);
+        }
 
         // Start bleep if in bleep mode
         if (filterModeRef.current === "bleep") {
@@ -399,15 +479,15 @@ export function DemoPlayer({
         }
       }
     } else {
+      // We're outside all intervals
       if (isMutedRef.current) {
-        // End muting
         playerRef.current.unMute();
         setIsMuted(false);
         setCurrentFilteredWord(null);
         stopBleep();
       }
     }
-  }, [findActiveInterval, startBleep, stopBleep]);
+  }, [findActiveInterval, findApproachingInterval, startBleep, stopBleep]);
 
   // Start monitoring playback
   const startMonitoring = useCallback(() => {
@@ -478,6 +558,7 @@ export function DemoPlayer({
     playerRef.current.seekTo(0, true);
     setFilterCount(0);
     setCurrentTime(0);
+    countedIntervalsRef.current.clear(); // Reset counted intervals
   };
 
   // Handle seek
@@ -669,7 +750,7 @@ export function DemoPlayer({
               <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-white/10">
                 <Shield className="w-4 h-4 text-primary" />
                 <span className="text-sm font-medium">
-                  {filterCount} words filtered
+                  {muteIntervals.length} profanities detected
                 </span>
               </div>
 
