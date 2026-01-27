@@ -292,14 +292,25 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const videoId = searchParams.get("videoId") || "73_1biulkYk";
 
+    console.log("[DEMO] Fetching transcript for video:", videoId);
+
     const supabase = createServiceClient();
 
     // Try to fetch from database
     const { data: video, error } = await supabase
       .from("videos")
-      .select("transcript, duration_seconds, title")
+      .select("transcript, duration_seconds, title, youtube_id")
       .eq("youtube_id", videoId)
       .single();
+
+    console.log("[DEMO] Supabase query result:", {
+      found: !!video,
+      hasTranscript: !!video?.transcript,
+      youtubeId: video?.youtube_id,
+      title: video?.title,
+      error: error?.message,
+      errorCode: error?.code,
+    });
 
     if (error || !video?.transcript) {
       // No transcript in database - try to fetch from orchestrator for demo video
@@ -406,8 +417,15 @@ export async function GET(request: NextRequest) {
     const transcript = video.transcript;
     let segments: TranscriptSegment[] = [];
 
+    console.log("[DEMO] Transcript structure:", {
+      hasSegments: !!transcript?.segments,
+      segmentCount: transcript?.segments?.length,
+      sampleSegment: transcript?.segments?.[0],
+      duration: transcript?.duration,
+    });
+
     // Handle different transcript formats
-    if (transcript.segments) {
+    if (transcript?.segments) {
       segments = transcript.segments.map((seg: Record<string, unknown>) => ({
         text: seg.text as string,
         start: (seg.start_time ?? seg.start) as number,
@@ -420,6 +438,12 @@ export async function GET(request: NextRequest) {
     // Find profanity timestamps
     const profanityTimestamps = parseTranscript(segments);
 
+    console.log("[DEMO] Profanity detection results:", {
+      totalSegments: segments.length,
+      profanityCount: profanityTimestamps.length,
+      profanities: profanityTimestamps.map(p => ({ word: p.word, start: p.start })),
+    });
+
     return NextResponse.json({
       segments: segments.map(s => ({
         text: s.text,
@@ -427,7 +451,7 @@ export async function GET(request: NextRequest) {
         end: s.end,
       })),
       profanity_timestamps: profanityTimestamps,
-      duration: video.duration_seconds || transcript.duration || 0,
+      duration: video.duration_seconds || transcript?.duration || 0,
       title: video.title,
     });
 
