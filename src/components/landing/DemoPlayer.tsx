@@ -142,14 +142,39 @@ export function DemoPlayer({
   const bleepOscillatorRef = useRef<OscillatorNode | null>(null);
   const bleepGainRef = useRef<GainNode | null>(null);
 
+  // Use refs for values that need to be accessed in interval callbacks
+  // to avoid stale closure issues
+  const isMutedRef = useRef(false);
+  const filterEnabledRef = useRef(true);
+  const filterModeRef = useRef<FilterMode>("bleep");
+  const muteIntervalsRef = useRef<MuteInterval[]>([]);
+
   const [isReady, setIsReady] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
-  const [filterEnabled, setFilterEnabled] = useState(true);
-  const [filterMode, setFilterMode] = useState<FilterMode>("bleep");
-  const [isMuted, setIsMuted] = useState(false);
-  const [muteIntervals, setMuteIntervals] = useState<MuteInterval[]>([]);
+  const [filterEnabled, setFilterEnabledState] = useState(true);
+  const [filterMode, setFilterModeState] = useState<FilterMode>("bleep");
+  const [isMuted, setIsMutedState] = useState(false);
+  const [muteIntervals, setMuteIntervalsState] = useState<MuteInterval[]>([]);
+
+  // Wrapper setters that keep refs in sync
+  const setFilterEnabled = (value: boolean) => {
+    filterEnabledRef.current = value;
+    setFilterEnabledState(value);
+  };
+  const setFilterMode = (value: FilterMode) => {
+    filterModeRef.current = value;
+    setFilterModeState(value);
+  };
+  const setIsMuted = (value: boolean) => {
+    isMutedRef.current = value;
+    setIsMutedState(value);
+  };
+  const setMuteIntervals = (value: MuteInterval[]) => {
+    muteIntervalsRef.current = value;
+    setMuteIntervalsState(value);
+  };
   const [currentFilteredWord, setCurrentFilteredWord] = useState<string | null>(
     null
   );
@@ -332,10 +357,11 @@ export function DemoPlayer({
     bleepOscillatorRef.current = null;
   }, []);
 
-  // Find active mute interval
+  // Find active mute interval - uses ref to avoid stale closures
   const findActiveInterval = useCallback(
     (time: number): MuteInterval | null => {
-      for (const interval of muteIntervals) {
+      const intervals = muteIntervalsRef.current;
+      for (const interval of intervals) {
         if (time >= interval.start && time <= interval.end) {
           return interval;
         }
@@ -343,12 +369,12 @@ export function DemoPlayer({
       }
       return null;
     },
-    [muteIntervals]
+    []
   );
 
-  // Check current time and apply filtering
+  // Check current time and apply filtering - uses refs to avoid stale closures
   const checkCurrentTime = useCallback(() => {
-    if (!playerRef.current || !filterEnabled) return;
+    if (!playerRef.current || !filterEnabledRef.current) return;
 
     const time = playerRef.current.getCurrentTime();
     setCurrentTime(time);
@@ -356,7 +382,7 @@ export function DemoPlayer({
     const activeInterval = findActiveInterval(time);
 
     if (activeInterval) {
-      if (!isMuted) {
+      if (!isMutedRef.current) {
         // Start muting
         playerRef.current.mute();
         setIsMuted(true);
@@ -368,12 +394,12 @@ export function DemoPlayer({
         setTimeout(() => setShowNotification(false), 2000);
 
         // Start bleep if in bleep mode
-        if (filterMode === "bleep") {
+        if (filterModeRef.current === "bleep") {
           startBleep();
         }
       }
     } else {
-      if (isMuted) {
+      if (isMutedRef.current) {
         // End muting
         playerRef.current.unMute();
         setIsMuted(false);
@@ -381,14 +407,7 @@ export function DemoPlayer({
         stopBleep();
       }
     }
-  }, [
-    filterEnabled,
-    filterMode,
-    findActiveInterval,
-    isMuted,
-    startBleep,
-    stopBleep,
-  ]);
+  }, [findActiveInterval, startBleep, stopBleep]);
 
   // Start monitoring playback
   const startMonitoring = useCallback(() => {
@@ -405,21 +424,21 @@ export function DemoPlayer({
     }
   }, []);
 
-  // Update monitoring when filter state changes
+  // Re-check current time when filter state changes while playing
   useEffect(() => {
-    if (isPlaying) {
+    if (isPlaying && filterEnabled) {
       checkCurrentTime();
     }
-  }, [filterEnabled, filterMode, checkCurrentTime, isPlaying]);
+  }, [filterEnabled, filterMode, isPlaying, checkCurrentTime]);
 
   // Handle filter toggle
   const handleFilterToggle = () => {
-    const newEnabled = !filterEnabled;
+    const newEnabled = !filterEnabledRef.current;
     setFilterEnabled(newEnabled);
 
     if (!newEnabled && playerRef.current) {
       // Disable filter - unmute if currently muted
-      if (isMuted) {
+      if (isMutedRef.current) {
         playerRef.current.unMute();
         setIsMuted(false);
         stopBleep();
@@ -429,10 +448,10 @@ export function DemoPlayer({
 
   // Handle mode toggle
   const handleModeToggle = () => {
-    const newMode = filterMode === "mute" ? "bleep" : "mute";
+    const newMode = filterModeRef.current === "mute" ? "bleep" : "mute";
     setFilterMode(newMode);
 
-    if (isMuted) {
+    if (isMutedRef.current) {
       if (newMode === "bleep") {
         startBleep();
       } else {
