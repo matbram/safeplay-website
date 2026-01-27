@@ -8,12 +8,19 @@ const ORCHESTRATOR_API_KEY = process.env.ORCHESTRATION_API_KEY;
 const DEMO_VIDEO_ID = "73_1biulkYk";
 
 // Types
+interface CharacterTiming {
+  char: string;
+  start: number;
+  end: number;
+}
+
 interface TranscriptSegment {
   text: string;
   start: number;
   end: number;
   start_time?: number;
   end_time?: number;
+  characters?: CharacterTiming[];  // Character-level timing for precision
 }
 
 interface MuteInterval {
@@ -171,23 +178,56 @@ function isSafeWord(word: string): boolean {
   return SAFE_WORDS.has(word.toLowerCase());
 }
 
+// Get timing for a character range using character-level timing if available
+function getCharacterLevelTiming(
+  segment: TranscriptSegment,
+  startIndex: number,
+  endIndex: number
+): { startTime: number; endTime: number } {
+  const segmentStart = segment.start_time ?? segment.start;
+  const segmentEnd = segment.end_time ?? segment.end;
+
+  // Use character-level timing if available (matching Chrome extension)
+  if (segment.characters && segment.characters.length > 0) {
+    const startChar = segment.characters[startIndex];
+    const endChar = segment.characters[Math.min(endIndex - 1, segment.characters.length - 1)];
+
+    return {
+      startTime: startChar?.start ?? segmentStart,
+      endTime: endChar?.end ?? segmentEnd,
+    };
+  }
+
+  // Fall back to linear estimation based on character position
+  const segmentDuration = segmentEnd - segmentStart;
+  const charCount = segment.text.length || 1;
+
+  const wordStartRatio = startIndex / charCount;
+  const wordEndRatio = endIndex / charCount;
+
+  return {
+    startTime: segmentStart + wordStartRatio * segmentDuration,
+    endTime: segmentStart + wordEndRatio * segmentDuration,
+  };
+}
+
 // Find profanity in a text segment
 function findProfanityInSegment(
   segment: TranscriptSegment
 ): { word: string; severity: SeverityLevel; startTime: number; endTime: number }[] {
   const results: { word: string; severity: SeverityLevel; startTime: number; endTime: number }[] = [];
   const text = segment.text.toLowerCase().trim();
-  const startTime = segment.start_time ?? segment.start;
-  const endTime = segment.end_time ?? segment.end;
 
   // Check if entire segment is a safe word
   if (isSafeWord(text)) {
     return results;
   }
 
-  // Check for exact word match
+  // Check for exact word match (entire segment is one profane word)
   const exactSeverity = PROFANITY_MAP.get(text);
   if (exactSeverity) {
+    // Use character-level timing for precision
+    const { startTime, endTime } = getCharacterLevelTiming(segment, 0, segment.text.length);
     results.push({
       word: text,
       severity: exactSeverity,
@@ -197,10 +237,8 @@ function findProfanityInSegment(
     return results;
   }
 
-  // Check for embedded profanity
+  // Check for embedded profanity in multi-word segments
   const words = text.split(/\s+/);
-  const segmentDuration = endTime - startTime;
-  const charCount = text.length;
 
   let charIndex = 0;
   for (const word of words) {
@@ -214,15 +252,18 @@ function findProfanityInSegment(
     // Check if this word is profanity
     for (const [profanity, severity] of PROFANITY_MAP) {
       if (wordLower === profanity || wordLower.includes(profanity)) {
-        // Calculate approximate timing based on character position
-        const wordStartRatio = charIndex / charCount;
-        const wordEndRatio = (charIndex + word.length) / charCount;
+        // Use character-level timing for precision (matching Chrome extension)
+        const { startTime, endTime } = getCharacterLevelTiming(
+          segment,
+          charIndex,
+          charIndex + word.length
+        );
 
         results.push({
           word: profanity,
           severity,
-          startTime: startTime + wordStartRatio * segmentDuration,
-          endTime: startTime + wordEndRatio * segmentDuration,
+          startTime,
+          endTime,
         });
         break;
       }
@@ -353,7 +394,7 @@ export async function GET(request: NextRequest) {
                 cached_at: new Date().toISOString(),
               }, { onConflict: "youtube_id" });
 
-              // Parse segments
+              // Parse segments (including character-level timing if available)
               const segments: TranscriptSegment[] = data.transcript.segments
                 ? data.transcript.segments.map((seg: Record<string, unknown>) => ({
                     text: seg.text as string,
@@ -361,6 +402,7 @@ export async function GET(request: NextRequest) {
                     end: (seg.end_time ?? seg.end) as number,
                     start_time: seg.start_time as number | undefined,
                     end_time: seg.end_time as number | undefined,
+                    characters: seg.characters as CharacterTiming[] | undefined,
                   }))
                 : [];
 
@@ -424,7 +466,7 @@ export async function GET(request: NextRequest) {
       duration: transcript?.duration,
     });
 
-    // Handle different transcript formats
+    // Handle different transcript formats (including character-level timing if available)
     if (transcript?.segments) {
       segments = transcript.segments.map((seg: Record<string, unknown>) => ({
         text: seg.text as string,
@@ -432,6 +474,7 @@ export async function GET(request: NextRequest) {
         end: (seg.end_time ?? seg.end) as number,
         start_time: seg.start_time as number | undefined,
         end_time: seg.end_time as number | undefined,
+        characters: seg.characters as CharacterTiming[] | undefined,
       }));
     }
 
