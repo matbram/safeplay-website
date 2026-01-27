@@ -1,6 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
 
+const ORCHESTRATOR_URL = process.env.ORCHESTRATION_API_URL || "https://safeplay-orchestrator-production.up.railway.app";
+const ORCHESTRATOR_API_KEY = process.env.ORCHESTRATION_API_KEY;
+
+// The specific demo video ID that's allowed to be fetched without auth
+const DEMO_VIDEO_ID = "73_1biulkYk";
+
 // Types
 interface TranscriptSegment {
   text: string;
@@ -296,13 +302,101 @@ export async function GET(request: NextRequest) {
       .single();
 
     if (error || !video?.transcript) {
-      // Return a message that transcript is not available
-      // In production, you might want to trigger a transcription job
+      // No transcript in database - try to fetch from orchestrator for demo video
+      if (videoId === DEMO_VIDEO_ID) {
+        console.log("[DEMO] Transcript not in DB, fetching from orchestrator...");
+
+        try {
+          const headers: Record<string, string> = {
+            "Content-Type": "application/json",
+          };
+          if (ORCHESTRATOR_API_KEY) {
+            headers["Authorization"] = `Bearer ${ORCHESTRATOR_API_KEY}`;
+          }
+
+          // First try to get cached transcript from orchestrator
+          const orchestratorResponse = await fetch(
+            `${ORCHESTRATOR_URL}/api/filter`,
+            {
+              method: "POST",
+              headers,
+              body: JSON.stringify({ youtube_id: videoId }),
+            }
+          );
+
+          if (orchestratorResponse.ok) {
+            const data = await orchestratorResponse.json();
+
+            if (data.status === "completed" && data.transcript) {
+              console.log("[DEMO] Got transcript from orchestrator");
+
+              // Cache it in our database for next time
+              const durationSeconds = data.transcript.duration || 0;
+              await supabase.from("videos").upsert({
+                youtube_id: videoId,
+                title: data.video?.title || data.transcript.title || "Demo Video",
+                channel_name: data.video?.channel_name || null,
+                duration_seconds: durationSeconds,
+                thumbnail_url: `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`,
+                transcript: data.transcript,
+                cached_at: new Date().toISOString(),
+              }, { onConflict: "youtube_id" });
+
+              // Parse segments
+              const segments: TranscriptSegment[] = data.transcript.segments
+                ? data.transcript.segments.map((seg: Record<string, unknown>) => ({
+                    text: seg.text as string,
+                    start: (seg.start_time ?? seg.start) as number,
+                    end: (seg.end_time ?? seg.end) as number,
+                    start_time: seg.start_time as number | undefined,
+                    end_time: seg.end_time as number | undefined,
+                  }))
+                : [];
+
+              const profanityTimestamps = parseTranscript(segments);
+
+              return NextResponse.json({
+                segments: segments.map((s) => ({
+                  text: s.text,
+                  start: s.start,
+                  end: s.end,
+                })),
+                profanity_timestamps: profanityTimestamps,
+                duration: durationSeconds,
+                title: data.video?.title || data.transcript.title || "Demo Video",
+              });
+            }
+
+            // If processing, return a pending status
+            if (data.status === "processing") {
+              console.log("[DEMO] Video is being processed...");
+              return NextResponse.json(
+                {
+                  error: "Demo video is being processed",
+                  error_code: "PROCESSING",
+                  message: "The demo video is being prepared. Please try again in a moment.",
+                  segments: [],
+                  profanity_timestamps: [],
+                  duration: 0,
+                },
+                { status: 202 }
+              );
+            }
+          }
+        } catch (orchError) {
+          console.error("[DEMO] Failed to fetch from orchestrator:", orchError);
+        }
+      }
+
+      // Return error for non-demo videos or if orchestrator fails
       return NextResponse.json(
         {
           error: "Transcript not available for this video",
           error_code: "TRANSCRIPT_NOT_FOUND",
-          message: "Please filter this video first to generate a transcript"
+          message: "This video needs to be filtered first to generate a transcript.",
+          segments: [],
+          profanity_timestamps: [],
+          duration: 0,
         },
         { status: 404 }
       );

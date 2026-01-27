@@ -165,16 +165,28 @@ export function DemoPlayer({
       try {
         setIsLoading(true);
         const response = await fetch(`/api/demo/transcript?videoId=${videoId}`);
-        if (!response.ok) {
-          throw new Error("Failed to fetch transcript");
-        }
         const data = await response.json();
-        setTranscript(data);
-        setMuteIntervals(data.profanity_timestamps || []);
-        setError(null);
+
+        if (!response.ok || data.error_code === "TRANSCRIPT_NOT_FOUND") {
+          // No transcript available - video needs to be filtered first
+          // Show video without filtering capability
+          console.log("Demo transcript not available:", data.message);
+          setTranscript(null);
+          setMuteIntervals([]);
+          setError(null); // Don't show error - just no filtering available
+          setFilterEnabled(false);
+        } else {
+          setTranscript(data);
+          setMuteIntervals(data.profanity_timestamps || []);
+          setError(null);
+        }
       } catch (err) {
         console.error("Failed to fetch transcript:", err);
-        setError("Failed to load demo transcript");
+        // Network error - still show video
+        setTranscript(null);
+        setMuteIntervals([]);
+        setError(null);
+        setFilterEnabled(false);
       } finally {
         setIsLoading(false);
       }
@@ -678,9 +690,20 @@ export function DemoPlayer({
 
       {/* Interactive hint */}
       <p className="text-center text-sm text-muted-foreground mt-4">
-        Toggle the filter to see the difference. Try both{" "}
-        <span className="font-medium text-foreground">mute</span> and{" "}
-        <span className="font-medium text-foreground">bleep</span> modes.
+        {muteIntervals.length > 0 ? (
+          <>
+            Toggle the filter to see the difference. Try both{" "}
+            <span className="font-medium text-foreground">mute</span> and{" "}
+            <span className="font-medium text-foreground">bleep</span> modes.
+          </>
+        ) : (
+          <>
+            Watch how SafePlay filters profanity in real-time.{" "}
+            <span className="font-medium text-foreground">
+              {muteIntervals.length} profane words detected in this video.
+            </span>
+          </>
+        )}
       </p>
     </div>
   );
