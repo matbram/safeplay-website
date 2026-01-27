@@ -801,7 +801,7 @@ export function DemoPlayer({
             </div>
 
             {/* Controls */}
-            <div className="flex items-center justify-between text-white">
+            <div className="relative flex items-center justify-between text-white">
               <div className="flex items-center gap-3">
                 {/* Play/Pause */}
                 <button
@@ -835,10 +835,10 @@ export function DemoPlayer({
                 </span>
               </div>
 
-              {/* Center - Mode toggle switch */}
+              {/* Center - Mode toggle switch (absolutely positioned for true center) */}
               <div
                 className={cn(
-                  "flex items-center rounded-full p-0.5 transition-colors",
+                  "absolute left-1/2 -translate-x-1/2 flex items-center rounded-full p-0.5 transition-colors",
                   filterEnabled ? "bg-white/20" : "bg-white/10"
                 )}
               >
@@ -867,9 +867,6 @@ export function DemoPlayer({
                   BLEEP
                 </button>
               </div>
-
-              {/* Right spacer for balance */}
-              <div className="w-24" />
             </div>
           </div>
         </div>
