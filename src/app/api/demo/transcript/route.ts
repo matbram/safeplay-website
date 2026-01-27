@@ -7,6 +7,12 @@ const ORCHESTRATOR_API_KEY = process.env.ORCHESTRATION_API_KEY;
 // The specific demo video ID that's allowed to be fetched without auth
 const DEMO_VIDEO_ID = "73_1biulkYk";
 
+// Padding settings (matching Chrome extension defaults from src/types/index.ts)
+const PADDING_BEFORE_MS = 100;  // 100ms before word starts
+const PADDING_AFTER_MS = 30;    // 30ms after word ends
+const MERGE_THRESHOLD_MS = 100;
+const MAX_WORD_DURATION_MS = 400; // Cap single word duration - prevents silence gaps from being included
+
 // Types
 interface CharacterTiming {
   char: string;
@@ -168,11 +174,6 @@ const SAFE_WORDS = new Set([
   "mississippi",
 ]);
 
-// Padding settings (matching Chrome extension defaults from src/types/index.ts)
-const PADDING_BEFORE_MS = 100;  // 100ms before word starts
-const PADDING_AFTER_MS = 30;    // 30ms after word ends
-const MERGE_THRESHOLD_MS = 100;
-
 // Check if word is safe (not profanity despite containing profanity substring)
 function isSafeWord(word: string): boolean {
   return SAFE_WORDS.has(word.toLowerCase());
@@ -182,10 +183,12 @@ function isSafeWord(word: string): boolean {
 function getCharacterLevelTiming(
   segment: TranscriptSegment,
   startIndex: number,
-  endIndex: number
+  endIndex: number,
+  wordLength: number
 ): { startTime: number; endTime: number } {
   const segmentStart = segment.start_time ?? segment.start;
   const segmentEnd = segment.end_time ?? segment.end;
+  const maxWordDuration = MAX_WORD_DURATION_MS / 1000;
 
   // Use character-level timing if available (matching Chrome extension)
   if (segment.characters && segment.characters.length > 0) {
@@ -205,10 +208,19 @@ function getCharacterLevelTiming(
   const wordStartRatio = startIndex / charCount;
   const wordEndRatio = endIndex / charCount;
 
-  return {
-    startTime: segmentStart + wordStartRatio * segmentDuration,
-    endTime: segmentStart + wordEndRatio * segmentDuration,
-  };
+  let startTime = segmentStart + wordStartRatio * segmentDuration;
+  let endTime = segmentStart + wordEndRatio * segmentDuration;
+
+  // Cap word duration to prevent long pauses/silences from being included
+  // This handles cases where a segment includes trailing silence
+  const estimatedDuration = endTime - startTime;
+  if (estimatedDuration > maxWordDuration) {
+    // Use a reasonable estimate based on word length (roughly 80ms per character for speech)
+    const reasonableDuration = Math.min(maxWordDuration, Math.max(0.15, wordLength * 0.08));
+    endTime = startTime + reasonableDuration;
+  }
+
+  return { startTime, endTime };
 }
 
 // Find profanity in a text segment
@@ -227,7 +239,7 @@ function findProfanityInSegment(
   const exactSeverity = PROFANITY_MAP.get(text);
   if (exactSeverity) {
     // Use character-level timing for precision
-    const { startTime, endTime } = getCharacterLevelTiming(segment, 0, segment.text.length);
+    const { startTime, endTime } = getCharacterLevelTiming(segment, 0, segment.text.length, text.length);
     results.push({
       word: text,
       severity: exactSeverity,
@@ -256,7 +268,8 @@ function findProfanityInSegment(
         const { startTime, endTime } = getCharacterLevelTiming(
           segment,
           charIndex,
-          charIndex + word.length
+          charIndex + word.length,
+          profanity.length
         );
 
         results.push({
