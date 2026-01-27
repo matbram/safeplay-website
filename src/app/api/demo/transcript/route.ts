@@ -264,11 +264,29 @@ function findProfanityInSegment(
     // Check if this word is profanity
     for (const [profanity, severity] of PROFANITY_MAP) {
       if (wordLower === profanity || wordLower.includes(profanity)) {
+        // Find exact position of profanity within the word (matching Chrome extension's findEmbeddedProfanity)
+        // This handles punctuation (e.g., "shit?" -> profanity "shit" at index 0-4, not 0-5)
+        const profanityIndexInWord = wordLower.indexOf(profanity);
+
+        // Calculate character positions in the original segment text
+        // We need to account for any leading punctuation stripped from word to get wordLower
+        let leadingPunctuationCount = 0;
+        for (let i = 0; i < word.length; i++) {
+          if (/[^a-z]/i.test(word[i])) {
+            leadingPunctuationCount++;
+          } else {
+            break;
+          }
+        }
+
+        const profanityStartInSegment = charIndex + leadingPunctuationCount + profanityIndexInWord;
+        const profanityEndInSegment = profanityStartInSegment + profanity.length;
+
         // Use character-level timing for precision (matching Chrome extension)
         const { startTime, endTime } = getCharacterLevelTiming(
           segment,
-          charIndex,
-          charIndex + word.length,
+          profanityStartInSegment,
+          profanityEndInSegment,
           profanity.length
         );
 
