@@ -151,7 +151,7 @@ export function DemoPlayer({
   // to avoid stale closure issues
   const isMutedRef = useRef(false);
   const filterEnabledRef = useRef(true);
-  const filterModeRef = useRef<FilterMode>("bleep");
+  const filterModeRef = useRef<FilterMode>("mute");
   const muteIntervalsRef = useRef<MuteInterval[]>([]);
 
   const [isReady, setIsReady] = useState(false);
@@ -159,7 +159,7 @@ export function DemoPlayer({
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [filterEnabled, setFilterEnabledState] = useState(true);
-  const [filterMode, setFilterModeState] = useState<FilterMode>("bleep");
+  const [filterMode, setFilterModeState] = useState<FilterMode>("mute");
   const [isMuted, setIsMutedState] = useState(false);
   const [muteIntervals, setMuteIntervalsState] = useState<MuteInterval[]>([]);
 
