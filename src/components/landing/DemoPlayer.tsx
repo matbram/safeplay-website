@@ -150,6 +150,8 @@ export function DemoPlayer({
   // Use refs for values that need to be accessed in interval callbacks
   // to avoid stale closure issues
   const isMutedRef = useRef(false);
+  const isFadingRef = useRef(false); // Track fade state like Chrome extension
+  const isBleepingRef = useRef(false); // Track bleep state separately
   const filterEnabledRef = useRef(true);
   const filterModeRef = useRef<FilterMode>("mute");
   const muteIntervalsRef = useRef<MuteInterval[]>([]);
@@ -262,13 +264,35 @@ export function DemoPlayer({
             if (state === window.YT.PlayerState.PLAYING) {
               setIsPlaying(true);
               startMonitoring();
+              // Resume bleep if we're currently in a mute interval (matching Chrome extension handleVideoPlay)
+              if (isMutedRef.current && filterModeRef.current === "bleep" && filterEnabledRef.current) {
+                const currentTime = event.target.getCurrentTime();
+                const activeInterval = findActiveInterval(currentTime);
+                if (activeInterval && !bleepOscillatorRef.current) {
+                  startBleep();
+                }
+              }
             } else if (
               state === window.YT.PlayerState.PAUSED ||
               state === window.YT.PlayerState.ENDED
             ) {
               setIsPlaying(false);
               stopMonitoring();
-              stopBleep();
+              // Stop bleep immediately on pause/ended (matching Chrome extension handleVideoPause/handleVideoEnded)
+              if (isBleepingRef.current) {
+                stopBleep();
+              }
+              // Reset mute state on ended
+              if (state === window.YT.PlayerState.ENDED) {
+                isMutedRef.current = false;
+                isBleepingRef.current = false;
+                setIsMutedState(false);
+              }
+            } else if (state === window.YT.PlayerState.BUFFERING) {
+              // Stop bleep during seeking/buffering (matching Chrome extension handleVideoSeeking)
+              if (isBleepingRef.current) {
+                stopBleep();
+              }
             }
           },
           onError: (event) => {
@@ -311,12 +335,27 @@ export function DemoPlayer({
     }
   }, []);
 
-  // Start bleep sound - classic TV censor bleep
+  // Start bleep sound - classic TV censor bleep (matching Chrome extension)
   const startBleep = useCallback(() => {
     if (!bleepContextRef.current || !bleepGainRef.current) return;
-    if (bleepOscillatorRef.current) return; // Already bleeping
 
-    // Create main oscillator
+    // Don't start bleep if video is paused or ended (matching Chrome extension)
+    if (playerRef.current) {
+      const state = playerRef.current.getPlayerState();
+      if (state !== window.YT?.PlayerState?.PLAYING) return;
+    }
+
+    // Don't start if already bleeping
+    if (bleepOscillatorRef.current) return;
+
+    isBleepingRef.current = true;
+
+    // Resume audio context if suspended
+    if (bleepContextRef.current.state === "suspended") {
+      bleepContextRef.current.resume();
+    }
+
+    // Create main oscillator for classic censor bleep
     const oscillator = bleepContextRef.current.createOscillator();
     oscillator.type = "sine";
     oscillator.frequency.value = BLEEP_FREQUENCY;
@@ -335,7 +374,7 @@ export function DemoPlayer({
     oscillator2.connect(mixer);
     mixer.connect(bleepGainRef.current);
 
-    // Fast attack envelope
+    // Fast attack envelope - classic censor bleep snaps on quickly
     const now = bleepContextRef.current.currentTime;
     bleepGainRef.current.gain.setValueAtTime(0, now);
     bleepGainRef.current.gain.linearRampToValueAtTime(
@@ -353,8 +392,10 @@ export function DemoPlayer({
     (oscillator as unknown as { _osc2: OscillatorNode; _mixer: GainNode })._mixer = mixer;
   }, []);
 
-  // Stop bleep sound with smooth release
+  // Stop bleep sound with smooth release (matching Chrome extension)
   const stopBleep = useCallback(() => {
+    isBleepingRef.current = false;
+
     if (
       !bleepContextRef.current ||
       !bleepGainRef.current ||
@@ -362,6 +403,7 @@ export function DemoPlayer({
     )
       return;
 
+    // Smooth release to avoid clicks
     const now = bleepContextRef.current.currentTime;
     bleepGainRef.current.gain.setValueAtTime(
       bleepGainRef.current.gain.value,
@@ -373,6 +415,7 @@ export function DemoPlayer({
     const osc2 = (oscillator as unknown as { _osc2?: OscillatorNode })._osc2;
     const mixer = (oscillator as unknown as { _mixer?: GainNode })._mixer;
 
+    // Stop and disconnect after release completes
     setTimeout(() => {
       try {
         oscillator.stop();
@@ -426,74 +469,107 @@ export function DemoPlayer({
   // Track which intervals have been counted to avoid double-counting
   const countedIntervalsRef = useRef<Set<number>>(new Set());
 
+  // Helper to count and show notification for an interval
+  const countInterval = useCallback((interval: MuteInterval) => {
+    const intervalIndex = muteIntervalsRef.current.indexOf(interval);
+    if (!countedIntervalsRef.current.has(intervalIndex)) {
+      countedIntervalsRef.current.add(intervalIndex);
+      setFilterCount((prev) => prev + 1);
+      setShowNotification(true);
+      setTimeout(() => setShowNotification(false), 2000);
+    }
+  }, []);
+
+  // Start fading out before the interval (matching Chrome extension startFadeOut)
+  const startFadeOut = useCallback((interval: MuteInterval) => {
+    if (!playerRef.current) return;
+
+    isFadingRef.current = true;
+    playerRef.current.mute();
+
+    // After "fade" completes (we can't actually fade with YouTube API), mark as muted
+    // Chrome extension uses 50ms FADE_DURATION
+    setTimeout(() => {
+      isFadingRef.current = false;
+      isMutedRef.current = true;
+      setIsMutedState(true);
+    }, 50);
+
+    setCurrentFilteredWord(interval.word);
+    countInterval(interval);
+
+    // Start bleep if in bleep mode
+    if (filterModeRef.current === "bleep") {
+      startBleep();
+    }
+  }, [countInterval, startBleep]);
+
+  // Immediately mute when entering interval directly (e.g., seeking into one)
+  // Matching Chrome extension startMute
+  const startMute = useCallback((interval: MuteInterval) => {
+    if (!playerRef.current) return;
+
+    playerRef.current.mute();
+    setIsMuted(true);
+    setCurrentFilteredWord(interval.word);
+    countInterval(interval);
+
+    // Start bleep if in bleep mode
+    if (filterModeRef.current === "bleep") {
+      startBleep();
+    }
+  }, [countInterval, startBleep]);
+
+  // End mute - restore volume (matching Chrome extension endMute)
+  const endMute = useCallback(() => {
+    if (!playerRef.current) return;
+
+    playerRef.current.unMute();
+    setIsMuted(false);
+    setCurrentFilteredWord(null);
+
+    if (filterModeRef.current === "bleep") {
+      stopBleep();
+    }
+  }, [stopBleep]);
+
   // Check current time and apply filtering - uses refs to avoid stale closures
+  // Matches Chrome extension checkCurrentTime logic exactly
   const checkCurrentTime = useCallback(() => {
     if (!playerRef.current || !filterEnabledRef.current) return;
 
     const time = playerRef.current.getCurrentTime();
     setCurrentTime(time);
 
+    // Check if we're in an interval OR approaching one (within fade buffer)
     const activeInterval = findActiveInterval(time);
     const approachingInterval = findApproachingInterval(time);
 
     if (activeInterval) {
-      // We're inside a mute interval
+      // We're inside a mute interval - ensure volume is 0
       if (!isMutedRef.current) {
-        playerRef.current.mute();
-        setIsMuted(true);
-        setCurrentFilteredWord(activeInterval.word);
-
-        // Count this interval if not already counted
-        const intervalIndex = muteIntervalsRef.current.indexOf(activeInterval);
-        if (!countedIntervalsRef.current.has(intervalIndex)) {
-          countedIntervalsRef.current.add(intervalIndex);
-          setFilterCount((prev) => prev + 1);
-          setShowNotification(true);
-          setTimeout(() => setShowNotification(false), 2000);
-        }
-
-        // Start bleep if in bleep mode
-        if (filterModeRef.current === "bleep") {
-          startBleep();
-        }
+        startMute(activeInterval);
       }
     } else if (approachingInterval) {
-      // We're approaching an interval - start muting/bleeping early
-      if (!isMutedRef.current) {
-        playerRef.current.mute();
-        setIsMuted(true);
-        setCurrentFilteredWord(approachingInterval.word);
-
-        // Count this interval if not already counted
-        const intervalIndex = muteIntervalsRef.current.indexOf(approachingInterval);
-        if (!countedIntervalsRef.current.has(intervalIndex)) {
-          countedIntervalsRef.current.add(intervalIndex);
-          setFilterCount((prev) => prev + 1);
-          setShowNotification(true);
-          setTimeout(() => setShowNotification(false), 2000);
-        }
-
-        // Start bleep if in bleep mode
-        if (filterModeRef.current === "bleep") {
-          startBleep();
-        }
+      // We're approaching an interval - start fading out
+      // Only start fade if not already muted and not already fading
+      if (!isMutedRef.current && !isFadingRef.current) {
+        startFadeOut(approachingInterval);
       }
     } else {
-      // We're outside all intervals
+      // We're outside all intervals - ensure volume is restored
       if (isMutedRef.current) {
-        playerRef.current.unMute();
-        setIsMuted(false);
-        setCurrentFilteredWord(null);
-        stopBleep();
+        endMute();
       }
     }
-  }, [findActiveInterval, findApproachingInterval, startBleep, stopBleep]);
+  }, [findActiveInterval, findApproachingInterval, startFadeOut, startMute, endMute]);
 
   // Start monitoring playback
   const startMonitoring = useCallback(() => {
     if (checkIntervalRef.current) return;
     initAudioContext();
-    checkIntervalRef.current = window.setInterval(checkCurrentTime, 10);
+    // Check every 5ms for precise timing (matching Chrome extension)
+    checkIntervalRef.current = window.setInterval(checkCurrentTime, 5);
   }, [checkCurrentTime, initAudioContext]);
 
   // Stop monitoring
@@ -517,10 +593,11 @@ export function DemoPlayer({
     setFilterEnabled(newEnabled);
 
     if (!newEnabled && playerRef.current) {
-      // Disable filter - unmute if currently muted
+      // Disable filter - unmute if currently muted and reset state
       if (isMutedRef.current) {
         playerRef.current.unMute();
         setIsMuted(false);
+        isFadingRef.current = false;
         stopBleep();
       }
     }
