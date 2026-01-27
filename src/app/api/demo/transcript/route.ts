@@ -332,8 +332,9 @@ export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const videoId = searchParams.get("videoId") || "73_1biulkYk";
+    const forceRefresh = searchParams.get("refresh") === "true";
 
-    console.log("[DEMO] Fetching transcript for video:", videoId);
+    console.log("[DEMO] Fetching transcript for video:", videoId, forceRefresh ? "(forcing refresh)" : "");
 
     const supabase = createServiceClient();
 
@@ -353,10 +354,10 @@ export async function GET(request: NextRequest) {
       errorCode: error?.code,
     });
 
-    if (error || !video?.transcript) {
-      // No transcript in database - try to fetch from orchestrator for demo video
+    if (error || !video?.transcript || forceRefresh) {
+      // No transcript in database or force refresh - try to fetch from orchestrator for demo video
       if (videoId === DEMO_VIDEO_ID) {
-        console.log("[DEMO] Transcript not in DB, fetching from orchestrator...");
+        console.log("[DEMO] Fetching from orchestrator...", forceRefresh ? "(forced refresh)" : "(not in DB)");
 
         try {
           const headers: Record<string, string> = {
@@ -380,7 +381,10 @@ export async function GET(request: NextRequest) {
             const data = await orchestratorResponse.json();
 
             if (data.status === "completed" && data.transcript) {
-              console.log("[DEMO] Got transcript from orchestrator");
+              const hasCharData = data.transcript.segments?.some((s: Record<string, unknown>) =>
+                Array.isArray(s.characters) && s.characters.length > 0
+              );
+              console.log("[DEMO] Got transcript from orchestrator, hasCharacterTiming:", hasCharData);
 
               // Cache it in our database for next time
               const durationSeconds = data.transcript.duration || 0;
@@ -408,6 +412,11 @@ export async function GET(request: NextRequest) {
 
               const profanityTimestamps = parseTranscript(segments);
 
+              // Log interval durations to help debug timing issues
+              console.log("[DEMO] Interval durations:", profanityTimestamps.map(p =>
+                `${p.word}: ${((p.end - p.start) * 1000).toFixed(0)}ms`
+              ));
+
               return NextResponse.json({
                 segments: segments.map((s) => ({
                   text: s.text,
@@ -417,6 +426,13 @@ export async function GET(request: NextRequest) {
                 profanity_timestamps: profanityTimestamps,
                 duration: durationSeconds,
                 title: data.video?.title || data.transcript.title || "Demo Video",
+                _debug: {
+                  hasCharacterTiming: hasCharData,
+                  intervals: profanityTimestamps.map(p => ({
+                    word: p.word,
+                    duration_ms: Math.round((p.end - p.start) * 1000)
+                  }))
+                },
               });
             }
 
@@ -484,8 +500,16 @@ export async function GET(request: NextRequest) {
     console.log("[DEMO] Profanity detection results:", {
       totalSegments: segments.length,
       profanityCount: profanityTimestamps.length,
-      profanities: profanityTimestamps.map(p => ({ word: p.word, start: p.start })),
+      hasCharacterTiming: segments.some(s => s.characters && s.characters.length > 0),
+      profanities: profanityTimestamps.map(p => ({
+        word: p.word,
+        start: p.start.toFixed(3),
+        end: p.end.toFixed(3),
+        duration: ((p.end - p.start) * 1000).toFixed(0) + 'ms'
+      })),
     });
+
+    const hasCharData = segments.some(s => s.characters && s.characters.length > 0);
 
     return NextResponse.json({
       segments: segments.map(s => ({
@@ -495,6 +519,14 @@ export async function GET(request: NextRequest) {
       })),
       profanity_timestamps: profanityTimestamps,
       duration: video.duration_seconds || transcript?.duration || 0,
+      _debug: {
+        hasCharacterTiming: hasCharData,
+        source: "database",
+        intervals: profanityTimestamps.map(p => ({
+          word: p.word,
+          duration_ms: Math.round((p.end - p.start) * 1000)
+        }))
+      },
       title: video.title,
     });
 
