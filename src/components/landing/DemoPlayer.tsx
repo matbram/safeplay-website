@@ -733,19 +733,25 @@ export function DemoPlayer({
             </div>
           )}
 
-          {/* SafePlay Toggle Badge - Click to turn on/off */}
-          <button
-            onClick={handleFilterToggle}
-            className={cn(
-              "absolute top-4 right-4 flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium shadow-lg z-20 transition-all cursor-pointer hover:scale-105",
-              filterEnabled
-                ? "bg-primary text-white"
-                : "bg-white/20 text-white/70 hover:bg-white/30"
-            )}
-          >
-            <Shield className="w-4 h-4" />
-            <span>SafePlay {filterEnabled ? "ON" : "OFF"}</span>
-          </button>
+          {/* SafePlay Toggle Badge + Profanity Count - Top Right */}
+          <div className="absolute top-4 right-4 flex items-center gap-2 z-20">
+            <button
+              onClick={handleFilterToggle}
+              className={cn(
+                "flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium shadow-lg transition-all cursor-pointer hover:scale-105",
+                filterEnabled
+                  ? "bg-primary text-white"
+                  : "bg-white/20 text-white/70 hover:bg-white/30"
+              )}
+            >
+              <Shield className="w-4 h-4" />
+              <span>SafePlay {filterEnabled ? "ON" : "OFF"}</span>
+            </button>
+            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-black/60 backdrop-blur-sm text-white text-sm font-medium shadow-lg">
+              <span>{muteIntervals.length}</span>
+              <span className="text-white/70">profanities</span>
+            </div>
+          </div>
 
           {/* Filter notification popup */}
           {showNotification && currentFilteredWord && (
@@ -829,15 +835,7 @@ export function DemoPlayer({
                 </span>
               </div>
 
-              {/* Center - Filter info */}
-              <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-white/10">
-                <Shield className="w-4 h-4 text-primary" />
-                <span className="text-sm font-medium">
-                  {muteIntervals.length} profanities detected
-                </span>
-              </div>
-
-              {/* Right - Mode toggle switch */}
+              {/* Center - Mode toggle switch */}
               <div
                 className={cn(
                   "flex items-center rounded-full p-0.5 transition-colors",
@@ -869,6 +867,9 @@ export function DemoPlayer({
                   BLEEP
                 </button>
               </div>
+
+              {/* Right spacer for balance */}
+              <div className="w-24" />
             </div>
           </div>
         </div>
