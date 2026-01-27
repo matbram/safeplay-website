@@ -656,13 +656,19 @@ export function DemoPlayer({
             </div>
           )}
 
-          {/* SafePlay Active Badge */}
-          {filterEnabled && (
-            <div className="absolute top-4 right-4 flex items-center gap-2 px-3 py-1.5 rounded-lg bg-primary text-white text-sm font-medium shadow-lg z-20">
-              <Shield className="w-4 h-4" />
-              <span>SafePlay Active</span>
-            </div>
-          )}
+          {/* SafePlay Toggle Badge - Click to turn on/off */}
+          <button
+            onClick={handleFilterToggle}
+            className={cn(
+              "absolute top-4 right-4 flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium shadow-lg z-20 transition-all cursor-pointer hover:scale-105",
+              filterEnabled
+                ? "bg-primary text-white"
+                : "bg-white/20 text-white/70 hover:bg-white/30"
+            )}
+          >
+            <Shield className="w-4 h-4" />
+            <span>SafePlay {filterEnabled ? "ON" : "OFF"}</span>
+          </button>
 
           {/* Filter notification popup */}
           {showNotification && currentFilteredWord && (
@@ -754,33 +760,36 @@ export function DemoPlayer({
                 </span>
               </div>
 
-              {/* Right - Filter controls */}
-              <div className="flex items-center gap-2">
-                {/* Mode toggle */}
+              {/* Right - Mode toggle switch */}
+              <div
+                className={cn(
+                  "flex items-center rounded-full p-0.5 transition-colors",
+                  filterEnabled ? "bg-white/20" : "bg-white/10"
+                )}
+              >
                 <button
                   className={cn(
-                    "text-xs px-2 py-1 rounded font-medium transition-colors",
-                    filterEnabled
-                      ? "bg-primary/20 text-primary"
-                      : "bg-white/10 text-white/60"
+                    "px-3 py-1 rounded-full text-xs font-medium transition-all",
+                    filterMode === "mute" && filterEnabled
+                      ? "bg-primary text-white"
+                      : "text-white/60 hover:text-white"
                   )}
-                  onClick={handleModeToggle}
+                  onClick={() => filterMode !== "mute" && handleModeToggle()}
                   disabled={!filterEnabled}
                 >
-                  {filterMode === "bleep" ? "BLEEP" : "MUTE"} MODE
+                  MUTE
                 </button>
-                {/* Filter toggle */}
                 <button
                   className={cn(
-                    "flex items-center gap-1.5 px-2 py-1 rounded text-xs font-medium transition-colors",
-                    filterEnabled
+                    "px-3 py-1 rounded-full text-xs font-medium transition-all",
+                    filterMode === "bleep" && filterEnabled
                       ? "bg-primary text-white"
-                      : "bg-white/20 text-white"
+                      : "text-white/60 hover:text-white"
                   )}
-                  onClick={handleFilterToggle}
+                  onClick={() => filterMode !== "bleep" && handleModeToggle()}
+                  disabled={!filterEnabled}
                 >
-                  <Shield className="w-3.5 h-3.5" />
-                  {filterEnabled ? "ON" : "OFF"}
+                  BLEEP
                 </button>
               </div>
             </div>
@@ -792,16 +801,12 @@ export function DemoPlayer({
       <p className="text-center text-sm text-muted-foreground mt-4">
         {muteIntervals.length > 0 ? (
           <>
-            Toggle the filter to see the difference. Try both{" "}
-            <span className="font-medium text-foreground">mute</span> and{" "}
-            <span className="font-medium text-foreground">bleep</span> modes.
+            <span className="font-medium text-foreground">Try it now!</span> Press play and hear SafePlay filter {muteIntervals.length} profanities in real-time.
+            Toggle <span className="font-medium text-foreground">ON/OFF</span> to compare.
           </>
         ) : (
           <>
-            Watch how SafePlay filters profanity in real-time.{" "}
-            <span className="font-medium text-foreground">
-              {muteIntervals.length} profane words detected in this video.
-            </span>
+            Press play to see SafePlay filter profanity in real-time.
           </>
         )}
       </p>
