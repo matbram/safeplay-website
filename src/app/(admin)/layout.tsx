@@ -18,6 +18,7 @@ import {
   Coins,
   Home,
   AlertTriangle,
+  Rocket,
 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
@@ -40,6 +41,7 @@ const navigation = [
   { name: "Credits", href: "/admin/credits", icon: Coins },
   { name: "Subscriptions", href: "/admin/subscriptions", icon: CreditCard },
   { name: "Support Tickets", href: "/admin/tickets", icon: Ticket },
+  { name: "Site Settings", href: "/admin/site-settings", icon: Rocket },
   { name: "Audit Log", href: "/admin/audit-log", icon: ScrollText, permission: "view_audit_log" as const },
   { name: "Admin Settings", href: "/admin/settings", icon: Settings, permission: "manage_admins" as const },
 ];
