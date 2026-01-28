@@ -2,9 +2,10 @@ import { createServerClient } from "@supabase/ssr";
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 import { NextResponse, type NextRequest } from "next/server";
 
-// Cache launch mode for 60 seconds to avoid hitting the database on every request
+// Cache launch mode for 5 seconds to avoid hitting the database on every request
+// Short TTL ensures changes propagate quickly while still reducing DB load
 let launchModeCache: { isPreLaunch: boolean; timestamp: number } | null = null;
-const CACHE_TTL = 60 * 1000; // 60 seconds
+const CACHE_TTL = 5 * 1000; // 5 seconds
 
 async function getLaunchModeFromDB(): Promise<boolean> {
   // Check cache first

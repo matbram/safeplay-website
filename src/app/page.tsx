@@ -10,6 +10,9 @@ import { CTA } from "@/components/landing/CTA";
 import { PreLaunchLanding } from "@/components/landing/PreLaunchLanding";
 import { getLaunchMode } from "@/lib/launch-mode";
 
+// Force dynamic rendering so launch mode changes take effect immediately
+export const dynamic = "force-dynamic";
+
 export default async function HomePage() {
   const launchMode = await getLaunchMode();
 
