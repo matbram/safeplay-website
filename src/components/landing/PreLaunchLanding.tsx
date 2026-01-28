@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Shield, Mail, Check, Loader2, Bell, Star, Users, Play, Sparkles, ArrowRight } from "lucide-react";
+import { Shield, Mail, Check, Loader2, Bell, Star, Users, Play } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { DemoPlayer } from "./DemoPlayer";
@@ -12,13 +12,7 @@ interface PreLaunchLandingProps {
   className?: string;
 }
 
-function EmailSignupForm({
-  variant = "default",
-  onSuccess
-}: {
-  variant?: "default" | "large";
-  onSuccess?: () => void;
-}) {
+export function PreLaunchLanding({ className }: PreLaunchLandingProps) {
   const [email, setEmail] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
@@ -47,7 +41,6 @@ function EmailSignupForm({
 
       setIsSuccess(true);
       setAlreadySubscribed(data.already_subscribed);
-      onSuccess?.();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong");
     } finally {
@@ -55,123 +48,6 @@ function EmailSignupForm({
     }
   };
 
-  if (isSuccess) {
-    return (
-      <div className={cn(
-        "flex flex-col items-center gap-4 rounded-2xl bg-success/10 border-2 border-success/30",
-        variant === "large" ? "p-8" : "p-6"
-      )}>
-        <div className={cn(
-          "rounded-full bg-success/20 flex items-center justify-center",
-          variant === "large" ? "w-16 h-16" : "w-12 h-12"
-        )}>
-          <Check className={cn("text-success", variant === "large" ? "w-8 h-8" : "w-6 h-6")} />
-        </div>
-        <div className="text-center">
-          <h3 className={cn(
-            "font-semibold text-foreground",
-            variant === "large" ? "text-2xl" : "text-lg"
-          )}>
-            {alreadySubscribed ? "You're already on the list!" : "You're on the list!"}
-          </h3>
-          <p className={cn(
-            "text-muted-foreground mt-2",
-            variant === "large" ? "text-base" : "text-sm"
-          )}>
-            We'll notify you as soon as SafePlay launches.
-          </p>
-        </div>
-      </div>
-    );
-  }
-
-  if (variant === "large") {
-    return (
-      <form onSubmit={handleSubmit} className="space-y-6">
-        <div className="space-y-4">
-          <div className="relative">
-            <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-6 h-6 text-muted-foreground" />
-            <Input
-              type="email"
-              placeholder="Enter your email address"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-              className="pl-12 h-14 text-lg bg-background border-2 border-border focus:border-primary"
-              disabled={isSubmitting}
-            />
-          </div>
-          <Button
-            type="submit"
-            size="lg"
-            className="w-full h-14 text-lg font-semibold"
-            disabled={isSubmitting || !email}
-          >
-            {isSubmitting ? (
-              <>
-                <Loader2 className="w-5 h-5 mr-2 animate-spin" />
-                Joining waitlist...
-              </>
-            ) : (
-              <>
-                Get Early Access
-                <ArrowRight className="w-5 h-5 ml-2" />
-              </>
-            )}
-          </Button>
-        </div>
-        {error && (
-          <p className="text-sm text-error text-center">{error}</p>
-        )}
-        <p className="text-sm text-muted-foreground text-center">
-          Join 10,000+ people waiting for launch. No spam, unsubscribe anytime.
-        </p>
-      </form>
-    );
-  }
-
-  return (
-    <form onSubmit={handleSubmit} className="space-y-4">
-      <div className="flex flex-col sm:flex-row gap-3">
-        <div className="relative flex-1">
-          <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
-          <Input
-            type="email"
-            placeholder="Enter your email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            required
-            className="pl-10 h-12 text-base bg-card border-border"
-            disabled={isSubmitting}
-          />
-        </div>
-        <Button
-          type="submit"
-          size="lg"
-          className="h-12 px-6 text-base whitespace-nowrap"
-          disabled={isSubmitting || !email}
-        >
-          {isSubmitting ? (
-            <>
-              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-              Joining...
-            </>
-          ) : (
-            <>
-              <Bell className="w-4 h-4 mr-2" />
-              Notify Me
-            </>
-          )}
-        </Button>
-      </div>
-      {error && (
-        <p className="text-sm text-error text-center">{error}</p>
-      )}
-    </form>
-  );
-}
-
-export function PreLaunchLanding({ className }: PreLaunchLandingProps) {
   return (
     <div className={cn("min-h-screen bg-background", className)}>
       {/* Header */}
@@ -246,60 +122,76 @@ export function PreLaunchLanding({ className }: PreLaunchLandingProps) {
                 <span className="text-sm text-muted-foreground">99.5% Accuracy</span>
               </div>
             </div>
-          </div>
 
-          {/* PROMINENT EMAIL SIGNUP CARD */}
-          <div className="mt-12 max-w-xl mx-auto animate-fade-in-up stagger-4">
-            <div className="relative">
-              {/* Glow effect */}
-              <div className="absolute -inset-1 bg-gradient-to-r from-primary via-primary/50 to-primary rounded-3xl blur-lg opacity-30 animate-pulse" />
-
-              {/* Card */}
-              <div className="relative p-8 rounded-2xl bg-card border-2 border-primary/30 shadow-2xl">
-                <div className="flex items-center justify-center gap-2 mb-4">
-                  <Sparkles className="w-5 h-5 text-primary" />
-                  <span className="text-sm font-semibold text-primary uppercase tracking-wide">
-                    Get Early Access
-                  </span>
-                  <Sparkles className="w-5 h-5 text-primary" />
+            {/* Email Signup Form - Larger and more prominent */}
+            <div className="mt-12 max-w-xl mx-auto animate-fade-in-up stagger-4">
+              {isSuccess ? (
+                <div className="flex flex-col items-center gap-4 p-8 rounded-2xl bg-success/10 border border-success/20">
+                  <div className="w-14 h-14 rounded-full bg-success/20 flex items-center justify-center">
+                    <Check className="w-7 h-7 text-success" />
+                  </div>
+                  <div className="text-center">
+                    <h3 className="text-xl font-semibold text-foreground">
+                      {alreadySubscribed ? "You're already on the list!" : "You're on the list!"}
+                    </h3>
+                    <p className="text-muted-foreground mt-1">
+                      We'll notify you as soon as SafePlay launches.
+                    </p>
+                  </div>
                 </div>
-
-                <h2 className="text-2xl font-bold text-foreground text-center mb-2">
-                  Be First to Try SafePlay
-                </h2>
-                <p className="text-muted-foreground text-center mb-6">
-                  Sign up now and get notified the moment we launch
-                </p>
-
-                <EmailSignupForm variant="large" />
-              </div>
+              ) : (
+                <form onSubmit={handleSubmit} className="space-y-4">
+                  <div className="flex flex-col sm:flex-row gap-3">
+                    <div className="relative flex-1">
+                      <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-6 h-6 text-muted-foreground" />
+                      <Input
+                        type="email"
+                        placeholder="Enter your email"
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                        required
+                        className="pl-12 h-14 text-lg bg-card border-2 border-border focus:border-primary"
+                        disabled={isSubmitting}
+                      />
+                    </div>
+                    <Button
+                      type="submit"
+                      size="lg"
+                      className="h-14 px-8 text-lg whitespace-nowrap"
+                      disabled={isSubmitting || !email}
+                    >
+                      {isSubmitting ? (
+                        <>
+                          <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+                          Joining...
+                        </>
+                      ) : (
+                        <>
+                          <Bell className="w-5 h-5 mr-2" />
+                          Notify Me
+                        </>
+                      )}
+                    </Button>
+                  </div>
+                  {error && (
+                    <p className="text-sm text-error text-center">{error}</p>
+                  )}
+                  <p className="text-sm text-muted-foreground text-center">
+                    Be the first to know when we launch. No spam, unsubscribe anytime.
+                  </p>
+                </form>
+              )}
             </div>
           </div>
 
           {/* Interactive Demo Player */}
           <div id="demo" className="mt-16 lg:mt-20 max-w-5xl mx-auto animate-fade-in-up stagger-5">
-            <div className="text-center mb-8">
-              <h2 className="text-2xl font-bold text-foreground mb-2">See It In Action</h2>
-              <p className="text-muted-foreground">Try the demo below - toggle SafePlay on and off to hear the difference</p>
-            </div>
             <DemoPlayer videoId="73_1biulkYk" />
           </div>
 
-          {/* Second CTA after demo */}
-          <div className="mt-16 max-w-lg mx-auto">
-            <div className="p-6 rounded-2xl bg-primary/5 border border-primary/20 text-center">
-              <h3 className="text-xl font-semibold text-foreground mb-2">
-                Impressed? Don't miss the launch!
-              </h3>
-              <p className="text-sm text-muted-foreground mb-4">
-                Join 10,000+ people who signed up for early access
-              </p>
-              <EmailSignupForm />
-            </div>
-          </div>
-
           {/* Social Proof */}
-          <div className="mt-16 text-center">
+          <div className="mt-16 text-center animate-fade-in-up stagger-6">
+            <p className="text-sm text-muted-foreground mb-4">Join thousands waiting for launch</p>
             <div className="flex items-center justify-center gap-8">
               <div className="text-center">
                 <div className="flex items-center gap-0.5 justify-center">
