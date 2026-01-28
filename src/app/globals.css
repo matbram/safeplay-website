@@ -1,50 +1,51 @@
 @import "tailwindcss";
 
 /* YouTube-Inspired Design System for SafePlay */
+/* Dark Mode Only - YouTube Dark Theme */
 :root {
   /* YouTube Red - Primary Brand Color */
   --primary: #FF0000;
   --primary-hover: #CC0000;
-  --primary-light: #FFEBEE;
+  --primary-light: rgba(255, 0, 0, 0.15);
   --primary-dark: #B30000;
 
   /* Secondary - YouTube Blue */
   --secondary: #065FD4;
   --secondary-hover: #0550B3;
 
-  /* Neutrals - YouTube Light Theme */
-  --background: #FFFFFF;
-  --background-secondary: #F9F9F9;
-  --foreground: #0F0F0F;
-  --muted: #F2F2F2;
-  --muted-foreground: #606060;
-  --border: #E5E5E5;
-  --input: #E5E5E5;
+  /* Neutrals - YouTube Dark Theme */
+  --background: #0F0F0F;
+  --background-secondary: #181818;
+  --foreground: #F1F1F1;
+  --muted: #272727;
+  --muted-foreground: #AAAAAA;
+  --border: #3F3F3F;
+  --input: #3F3F3F;
   --ring: #FF0000;
 
   /* Cards */
-  --card: #FFFFFF;
-  --card-foreground: #0F0F0F;
+  --card: #212121;
+  --card-foreground: #F1F1F1;
 
   /* Accents */
-  --accent: #F2F2F2;
-  --accent-foreground: #0F0F0F;
+  --accent: #272727;
+  --accent-foreground: #F1F1F1;
 
   /* Semantic Colors */
   --success: #2BA640;
-  --success-light: #E8F5E9;
+  --success-light: rgba(43, 166, 64, 0.15);
   --warning: #F9A825;
-  --warning-light: #FFF8E1;
+  --warning-light: rgba(249, 168, 37, 0.15);
   --error: #FF4E45;
-  --error-light: #FFEBEE;
+  --error-light: rgba(255, 78, 69, 0.15);
 
-  /* Shadows - Subtle YouTube style */
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
-  --shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-  --shadow-md: 0 4px 6px rgba(0, 0, 0, 0.07), 0 2px 4px rgba(0, 0, 0, 0.05);
-  --shadow-lg: 0 10px 15px rgba(0, 0, 0, 0.1), 0 4px 6px rgba(0, 0, 0, 0.05);
-  --shadow-xl: 0 20px 25px rgba(0, 0, 0, 0.1), 0 8px 10px rgba(0, 0, 0, 0.04);
-  --shadow-glow: 0 0 20px rgba(255, 0, 0, 0.15);
+  /* Shadows - Dark mode style */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 4px 6px rgba(0, 0, 0, 0.3), 0 2px 4px rgba(0, 0, 0, 0.2);
+  --shadow-lg: 0 10px 15px rgba(0, 0, 0, 0.4), 0 4px 6px rgba(0, 0, 0, 0.2);
+  --shadow-xl: 0 20px 25px rgba(0, 0, 0, 0.4), 0 8px 10px rgba(0, 0, 0, 0.2);
+  --shadow-glow: 0 0 30px rgba(255, 0, 0, 0.2);
 
   /* Radius - YouTube uses rounded corners */
   --radius: 8px;
@@ -53,28 +54,9 @@
   --radius-xl: 16px;
   --radius-2xl: 24px;
   --radius-full: 9999px;
-}
 
-/* Dark Mode - YouTube Dark Theme */
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0F0F0F;
-    --background-secondary: #181818;
-    --foreground: #F1F1F1;
-    --muted: #272727;
-    --muted-foreground: #AAAAAA;
-    --border: #3F3F3F;
-    --input: #3F3F3F;
-    --card: #212121;
-    --card-foreground: #F1F1F1;
-    --accent: #272727;
-    --accent-foreground: #F1F1F1;
-    --primary-light: rgba(255, 0, 0, 0.15);
-    --success-light: rgba(43, 166, 64, 0.15);
-    --warning-light: rgba(249, 168, 37, 0.15);
-    --error-light: rgba(255, 78, 69, 0.15);
-    --shadow-glow: 0 0 30px rgba(255, 0, 0, 0.2);
-  }
+  /* Force dark color scheme for browser UI elements */
+  color-scheme: dark;
 }
 
 @theme inline {
@@ -299,19 +281,12 @@ body {
 .stagger-5 { animation-delay: 0.5s; opacity: 0; }
 .stagger-6 { animation-delay: 0.6s; opacity: 0; }
 
-/* Glass Effect */
+/* Glass Effect - Dark mode */
 .glass {
-  background: rgba(255, 255, 255, 0.7);
+  background: rgba(33, 33, 33, 0.8);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.2);
-}
-
-@media (prefers-color-scheme: dark) {
-  .glass {
-    background: rgba(33, 33, 33, 0.8);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-  }
+  border: 1px solid rgba(255, 255, 255, 0.1);
 }
 
 /* YouTube Red Gradient */
@@ -331,19 +306,9 @@ body {
 .hero-gradient {
   background: radial-gradient(
     ellipse 100% 80% at 50% -30%,
-    rgba(255, 0, 0, 0.08),
+    rgba(255, 0, 0, 0.12),
     transparent 70%
   );
-}
-
-@media (prefers-color-scheme: dark) {
-  .hero-gradient {
-    background: radial-gradient(
-      ellipse 100% 80% at 50% -30%,
-      rgba(255, 0, 0, 0.12),
-      transparent 70%
-    );
-  }
 }
 
 /* Red Glow Effect */

@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import { Play, Shield, Check, Volume2, VolumeX, Star } from "lucide-react";
+import { Play, Shield, Check, Star } from "lucide-react";
+import { DemoPlayer } from "./DemoPlayer";
 
 export function Hero() {
   return (
@@ -86,116 +87,9 @@ export function Hero() {
           </p>
         </div>
 
-        {/* Video Player Mockup */}
-        <div className="mt-16 lg:mt-20 max-w-5xl mx-auto animate-fade-in-up stagger-5">
-          <div className="relative">
-            {/* Glow effect behind player */}
-            <div className="absolute -inset-4 bg-gradient-to-r from-primary/20 via-primary/10 to-primary/20 rounded-3xl blur-2xl opacity-50" />
-
-            {/* Browser Chrome */}
-            <div className="relative rounded-2xl border border-border bg-card shadow-2xl overflow-hidden">
-              {/* Browser Header */}
-              <div className="flex items-center gap-3 px-4 py-3 border-b border-border bg-muted/30">
-                <div className="flex gap-2">
-                  <div className="w-3 h-3 rounded-full bg-[#FF5F57]" />
-                  <div className="w-3 h-3 rounded-full bg-[#FFBD2E]" />
-                  <div className="w-3 h-3 rounded-full bg-[#28CA41]" />
-                </div>
-                <div className="flex-1 flex items-center justify-center">
-                  <div className="flex items-center gap-2 px-4 py-1.5 rounded-full bg-background/80 border border-border max-w-md w-full">
-                    <Shield className="w-4 h-4 text-primary flex-shrink-0" />
-                    <span className="text-sm text-muted-foreground truncate">youtube.com/watch?v=family-friendly-content</span>
-                  </div>
-                </div>
-                <div className="w-16" /> {/* Spacer for balance */}
-              </div>
-
-              {/* YouTube-style Video Player */}
-              <div className="relative aspect-video bg-[#0F0F0F]">
-                {/* Video Thumbnail Area */}
-                <div className="absolute inset-0 bg-gradient-to-br from-slate-800 via-slate-900 to-black">
-                  {/* Fake video content pattern */}
-                  <div className="absolute inset-0 opacity-30">
-                    <div className="absolute top-1/4 left-1/4 w-32 h-32 rounded-full bg-white/5" />
-                    <div className="absolute bottom-1/3 right-1/4 w-48 h-24 rounded-lg bg-white/5" />
-                  </div>
-                </div>
-
-                {/* Center Play Button - YouTube Style */}
-                <div className="absolute inset-0 flex items-center justify-center">
-                  <div className="play-button glow-red">
-                    <svg viewBox="0 0 24 24" className="w-8 h-8">
-                      <path d="M8 5v14l11-7z" fill="white"/>
-                    </svg>
-                  </div>
-                </div>
-
-                {/* SafePlay Active Badge */}
-                <div className="absolute top-4 right-4 flex items-center gap-2 px-3 py-1.5 rounded-lg bg-primary text-white text-sm font-medium shadow-lg">
-                  <Shield className="w-4 h-4" />
-                  <span>SafePlay Active</span>
-                </div>
-
-                {/* Filter notification popup */}
-                <div className="absolute top-4 left-4 flex items-center gap-3 px-4 py-2.5 rounded-lg bg-black/80 backdrop-blur-sm border border-white/10 text-white animate-fade-in">
-                  <div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center">
-                    <VolumeX className="w-4 h-4 text-primary" />
-                  </div>
-                  <div>
-                    <p className="text-sm font-medium">Profanity filtered</p>
-                    <p className="text-xs text-white/60">Word muted at 3:24</p>
-                  </div>
-                </div>
-
-                {/* YouTube-style Controls Bar */}
-                <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/90 via-black/50 to-transparent p-4">
-                  {/* Progress Bar */}
-                  <div className="relative h-1 bg-white/30 rounded-full mb-3 group cursor-pointer hover:h-1.5 transition-all">
-                    {/* Buffered */}
-                    <div className="absolute left-0 top-0 h-full w-4/5 bg-white/40 rounded-full" />
-                    {/* Progress */}
-                    <div className="absolute left-0 top-0 h-full w-[65%] bg-primary rounded-full">
-                      {/* Scrubber */}
-                      <div className="absolute right-0 top-1/2 -translate-y-1/2 w-3 h-3 bg-primary rounded-full scale-0 group-hover:scale-100 transition-transform" />
-                    </div>
-                    {/* Filtered sections markers */}
-                    <div className="absolute left-[22%] top-0 h-full w-1 bg-white rounded-full" />
-                    <div className="absolute left-[38%] top-0 h-full w-1 bg-white rounded-full" />
-                    <div className="absolute left-[56%] top-0 h-full w-1 bg-white rounded-full" />
-                  </div>
-
-                  {/* Controls */}
-                  <div className="flex items-center justify-between text-white">
-                    <div className="flex items-center gap-3">
-                      {/* Play/Pause */}
-                      <button className="p-1 hover:bg-white/10 rounded transition-colors">
-                        <Play className="w-6 h-6" fill="white" />
-                      </button>
-                      {/* Volume */}
-                      <button className="p-1 hover:bg-white/10 rounded transition-colors">
-                        <Volume2 className="w-5 h-5" />
-                      </button>
-                      {/* Time */}
-                      <span className="text-sm">8:24 / 12:47</span>
-                    </div>
-
-                    {/* Center - Filter info */}
-                    <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-white/10">
-                      <Shield className="w-4 h-4 text-primary" />
-                      <span className="text-sm font-medium">3 words filtered</span>
-                    </div>
-
-                    <div className="flex items-center gap-2">
-                      {/* Settings indicator */}
-                      <div className="text-xs bg-primary/20 text-primary px-2 py-1 rounded font-medium">
-                        MUTE MODE
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
+        {/* Interactive Demo Player */}
+        <div id="demo" className="mt-16 lg:mt-20 max-w-5xl mx-auto animate-fade-in-up stagger-5">
+          <DemoPlayer videoId="73_1biulkYk" />
         </div>
 
         {/* Stats Row */}
