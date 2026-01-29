@@ -15,8 +15,9 @@ import {
   ChevronDown,
   Bell,
   Users,
+  ShieldCheck,
 } from "lucide-react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
@@ -50,7 +51,27 @@ const planNames: Record<string, string> = {
 function DashboardContent({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
   const { user: userData, loading, signOut } = useUser();
+
+  // Check if user is also an admin
+  useEffect(() => {
+    async function checkAdminStatus() {
+      try {
+        const response = await fetch("/api/admin/me", {
+          method: "GET",
+          credentials: "include",
+          cache: "no-store",
+        });
+        if (response.ok) {
+          setIsAdmin(true);
+        }
+      } catch {
+        // Not an admin, that's fine
+      }
+    }
+    checkAdminStatus();
+  }, []);
 
   // User display data from context
   const user = {
@@ -204,6 +225,17 @@ function DashboardContent({ children }: { children: React.ReactNode }) {
                     Billing
                   </Link>
                 </DropdownMenuItem>
+                {isAdmin && (
+                  <>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem asChild>
+                      <Link href="/admin">
+                        <ShieldCheck className="w-4 h-4 mr-2" />
+                        Admin Dashboard
+                      </Link>
+                    </DropdownMenuItem>
+                  </>
+                )}
                 <DropdownMenuSeparator />
                 <DropdownMenuItem className="text-error" onClick={signOut}>
                   <LogOut className="w-4 h-4 mr-2" />
