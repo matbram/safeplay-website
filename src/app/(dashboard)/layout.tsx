@@ -29,6 +29,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 import { UserProvider, useUser } from "@/contexts/user-context";
+import { ThemeToggle } from "@/components/ui/theme-toggle";
 
 const navigation = [
   { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
@@ -162,6 +163,9 @@ function DashboardContent({ children }: { children: React.ReactNode }) {
                 Filter Video
               </Link>
             </Button>
+
+            {/* Theme Toggle */}
+            <ThemeToggle />
 
             {/* Notifications */}
             <button className="relative p-2 rounded-lg hover:bg-accent">

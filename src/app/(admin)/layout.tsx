@@ -34,6 +34,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { AdminProvider, useAdmin } from "@/contexts/admin-context";
+import { ThemeToggle } from "@/components/ui/theme-toggle";
 
 const navigation = [
   { name: "Dashboard", href: "/admin", icon: LayoutDashboard },
@@ -228,6 +229,9 @@ function AdminContent({ children }: { children: React.ReactNode }) {
 
           {/* Right Side */}
           <div className="flex items-center gap-3">
+            {/* Theme Toggle */}
+            <ThemeToggle />
+
             {/* Notifications */}
             <button className="relative p-2 rounded-lg hover:bg-accent">
               <Bell className="w-5 h-5 text-muted-foreground" />
