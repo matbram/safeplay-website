@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Shield, Mail, Check, Loader2, Bell, Star, Users, Play } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { ThemeToggle } from "@/components/ui/theme-toggle";
 import { DemoPlayer } from "./DemoPlayer";
 import { cn } from "@/lib/utils";
 
@@ -60,11 +61,12 @@ export function PreLaunchLanding({ className }: PreLaunchLandingProps) {
               </div>
               <span className="text-xl font-bold text-foreground">SafePlay</span>
             </Link>
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2">
               <span className="hidden sm:inline-flex items-center gap-1 px-3 py-1 rounded-full bg-primary/10 text-primary text-sm font-medium">
                 <Bell className="w-3.5 h-3.5" />
                 Coming Soon
               </span>
+              <ThemeToggle />
             </div>
           </div>
         </div>
