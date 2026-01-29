@@ -237,6 +237,17 @@ function DashboardContent({ children }: { children: React.ReactNode }) {
                     Billing
                   </Link>
                 </DropdownMenuItem>
+                {isAdmin && (
+                  <>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem asChild>
+                      <Link href="/admin">
+                        <ShieldCheck className="w-4 h-4 mr-2" />
+                        Admin Dashboard
+                      </Link>
+                    </DropdownMenuItem>
+                  </>
+                )}
                 <DropdownMenuSeparator />
                 <DropdownMenuItem className="text-error" onClick={signOut}>
                   <LogOut className="w-4 h-4 mr-2" />
