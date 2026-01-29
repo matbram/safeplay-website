@@ -63,10 +63,12 @@ function DashboardContent({ children }: { children: React.ReactNode }) {
           credentials: "include",
           cache: "no-store",
         });
+        console.log("Admin check response:", response.status, response.ok);
         if (response.ok) {
           setIsAdmin(true);
         }
-      } catch {
+      } catch (error) {
+        console.error("Admin check error:", error);
         // Not an admin, that's fine
       }
     }
