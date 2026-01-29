@@ -63,12 +63,10 @@ function DashboardContent({ children }: { children: React.ReactNode }) {
           credentials: "include",
           cache: "no-store",
         });
-        console.log("Admin check response:", response.status, response.ok);
         if (response.ok) {
           setIsAdmin(true);
         }
-      } catch (error) {
-        console.error("Admin check error:", error);
+      } catch {
         // Not an admin, that's fine
       }
     }
@@ -138,6 +136,18 @@ function DashboardContent({ children }: { children: React.ReactNode }) {
                 </Link>
               );
             })}
+
+            {/* Admin Dashboard Link - only shown for admins */}
+            {isAdmin && (
+              <Link
+                href="/admin"
+                onClick={() => setSidebarOpen(false)}
+                className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors text-muted-foreground hover:bg-accent hover:text-foreground mt-4 border-t pt-4"
+              >
+                <ShieldCheck className="w-5 h-5" />
+                Admin Dashboard
+              </Link>
+            )}
           </nav>
 
           {/* User Info */}
@@ -227,17 +237,6 @@ function DashboardContent({ children }: { children: React.ReactNode }) {
                     Billing
                   </Link>
                 </DropdownMenuItem>
-                {isAdmin && (
-                  <>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem asChild>
-                      <Link href="/admin">
-                        <ShieldCheck className="w-4 h-4 mr-2" />
-                        Admin Dashboard
-                      </Link>
-                    </DropdownMenuItem>
-                  </>
-                )}
                 <DropdownMenuSeparator />
                 <DropdownMenuItem className="text-error" onClick={signOut}>
                   <LogOut className="w-4 h-4 mr-2" />
