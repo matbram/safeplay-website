@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
+import { ThemeToggle } from "@/components/ui/theme-toggle";
 import { Menu, X, Shield, Play } from "lucide-react";
 
 interface HeaderProps {
@@ -54,6 +55,7 @@ export function Header({ isAuthenticated = false }: HeaderProps) {
 
           {/* Auth Buttons */}
           <div className="hidden md:flex md:items-center md:gap-2">
+            <ThemeToggle />
             {isAuthenticated ? (
               <Button asChild>
                 <Link href="/dashboard">

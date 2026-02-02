@@ -1,7 +1,9 @@
 @import "tailwindcss";
 
 /* YouTube-Inspired Design System for SafePlay */
-/* Dark Mode Only - YouTube Dark Theme */
+/* Supports both Light and Dark themes */
+
+/* Dark Mode (default) */
 :root {
   /* YouTube Red - Primary Brand Color */
   --primary: #FF0000;
@@ -55,8 +57,45 @@
   --radius-2xl: 24px;
   --radius-full: 9999px;
 
-  /* Force dark color scheme for browser UI elements */
+  /* Color scheme for browser UI */
   color-scheme: dark;
+}
+
+/* Light Mode */
+.light {
+  /* Neutrals - YouTube Light Theme */
+  --background: #FFFFFF;
+  --background-secondary: #F9F9F9;
+  --foreground: #0F0F0F;
+  --muted: #F2F2F2;
+  --muted-foreground: #606060;
+  --border: #E5E5E5;
+  --input: #E5E5E5;
+
+  /* Cards */
+  --card: #FFFFFF;
+  --card-foreground: #0F0F0F;
+
+  /* Accents */
+  --accent: #F2F2F2;
+  --accent-foreground: #0F0F0F;
+
+  /* Semantic Colors - slightly adjusted for light bg */
+  --success-light: rgba(43, 166, 64, 0.1);
+  --warning-light: rgba(249, 168, 37, 0.1);
+  --error-light: rgba(255, 78, 69, 0.1);
+  --primary-light: rgba(255, 0, 0, 0.1);
+
+  /* Shadows - Light mode style */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
+  --shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  --shadow-md: 0 4px 6px rgba(0, 0, 0, 0.07), 0 2px 4px rgba(0, 0, 0, 0.05);
+  --shadow-lg: 0 10px 15px rgba(0, 0, 0, 0.1), 0 4px 6px rgba(0, 0, 0, 0.05);
+  --shadow-xl: 0 20px 25px rgba(0, 0, 0, 0.1), 0 8px 10px rgba(0, 0, 0, 0.05);
+  --shadow-glow: 0 0 30px rgba(255, 0, 0, 0.1);
+
+  /* Color scheme for browser UI */
+  color-scheme: light;
 }
 
 @theme inline {

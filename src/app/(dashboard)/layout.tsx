@@ -15,8 +15,9 @@ import {
   ChevronDown,
   Bell,
   Users,
+  ShieldCheck,
 } from "lucide-react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
@@ -29,6 +30,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 import { UserProvider, useUser } from "@/contexts/user-context";
+import { ThemeToggle } from "@/components/ui/theme-toggle";
 
 const navigation = [
   { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
@@ -49,7 +51,27 @@ const planNames: Record<string, string> = {
 function DashboardContent({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
   const { user: userData, loading, signOut } = useUser();
+
+  // Check if user is also an admin
+  useEffect(() => {
+    async function checkAdminStatus() {
+      try {
+        const response = await fetch("/api/admin/me", {
+          method: "GET",
+          credentials: "include",
+          cache: "no-store",
+        });
+        if (response.ok) {
+          setIsAdmin(true);
+        }
+      } catch {
+        // Not an admin, that's fine
+      }
+    }
+    checkAdminStatus();
+  }, []);
 
   // User display data from context
   const user = {
@@ -114,6 +136,18 @@ function DashboardContent({ children }: { children: React.ReactNode }) {
                 </Link>
               );
             })}
+
+            {/* Admin Dashboard Link - only shown for admins */}
+            {isAdmin && (
+              <Link
+                href="/admin"
+                onClick={() => setSidebarOpen(false)}
+                className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors text-muted-foreground hover:bg-accent hover:text-foreground mt-4 border-t pt-4"
+              >
+                <ShieldCheck className="w-5 h-5" />
+                Admin Dashboard
+              </Link>
+            )}
           </nav>
 
           {/* User Info */}
@@ -163,6 +197,9 @@ function DashboardContent({ children }: { children: React.ReactNode }) {
               </Link>
             </Button>
 
+            {/* Theme Toggle */}
+            <ThemeToggle />
+
             {/* Notifications */}
             <button className="relative p-2 rounded-lg hover:bg-accent">
               <Bell className="w-5 h-5 text-muted-foreground" />
@@ -200,6 +237,17 @@ function DashboardContent({ children }: { children: React.ReactNode }) {
                     Billing
                   </Link>
                 </DropdownMenuItem>
+                {isAdmin && (
+                  <>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem asChild>
+                      <Link href="/admin">
+                        <ShieldCheck className="w-4 h-4 mr-2" />
+                        Admin Dashboard
+                      </Link>
+                    </DropdownMenuItem>
+                  </>
+                )}
                 <DropdownMenuSeparator />
                 <DropdownMenuItem className="text-error" onClick={signOut}>
                   <LogOut className="w-4 h-4 mr-2" />

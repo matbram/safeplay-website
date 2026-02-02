@@ -18,6 +18,7 @@ import {
   Coins,
   Home,
   AlertTriangle,
+  Rocket,
 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
@@ -33,6 +34,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { AdminProvider, useAdmin } from "@/contexts/admin-context";
+import { ThemeToggle } from "@/components/ui/theme-toggle";
 
 const navigation = [
   { name: "Dashboard", href: "/admin", icon: LayoutDashboard },
@@ -40,6 +42,7 @@ const navigation = [
   { name: "Credits", href: "/admin/credits", icon: Coins },
   { name: "Subscriptions", href: "/admin/subscriptions", icon: CreditCard },
   { name: "Support Tickets", href: "/admin/tickets", icon: Ticket },
+  { name: "Site Settings", href: "/admin/site-settings", icon: Rocket },
   { name: "Audit Log", href: "/admin/audit-log", icon: ScrollText, permission: "view_audit_log" as const },
   { name: "Admin Settings", href: "/admin/settings", icon: Settings, permission: "manage_admins" as const },
 ];
@@ -226,6 +229,9 @@ function AdminContent({ children }: { children: React.ReactNode }) {
 
           {/* Right Side */}
           <div className="flex items-center gap-3">
+            {/* Theme Toggle */}
+            <ThemeToggle />
+
             {/* Notifications */}
             <button className="relative p-2 rounded-lg hover:bg-accent">
               <Bell className="w-5 h-5 text-muted-foreground" />
