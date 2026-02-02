@@ -110,6 +110,10 @@ export async function updateSession(request: NextRequest) {
     "/terms",
     "/cookies",
     "/contact",
+    "/login",
+    "/signup",
+    "/forgot-password",
+    "/reset-password",
   ];
   const isAlwaysAllowed = alwaysAllowedRoutes.some((route) =>
     pathname.startsWith(route)
@@ -125,6 +129,7 @@ export async function updateSession(request: NextRequest) {
 
       if (!userIsAdmin) {
         // Routes blocked during pre-launch (redirect to homepage)
+        // Note: auth routes (/login, /signup, etc.) are in alwaysAllowedRoutes
         const blockedRoutes = [
           "/dashboard",
           "/filter",
@@ -132,10 +137,6 @@ export async function updateSession(request: NextRequest) {
           "/billing",
           "/settings",
           "/family",
-          "/login",
-          "/signup",
-          "/forgot-password",
-          "/reset-password",
           "/pricing",
           "/features",
           "/how-it-works",
