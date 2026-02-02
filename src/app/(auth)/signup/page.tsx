@@ -111,10 +111,14 @@ function SignupForm() {
         return;
       }
 
+      const baseUrl = typeof window !== "undefined" && window.location?.origin
+        ? window.location.origin
+        : process.env.NEXT_PUBLIC_APP_URL || "https://trysafeplay.com";
+
       const { error } = await supabase.auth.signInWithOAuth({
         provider: "google",
         options: {
-          redirectTo: `${window.location.origin}/api/auth/callback?next=/dashboard`,
+          redirectTo: `${baseUrl}/api/auth/callback?next=/dashboard`,
         },
       });
 
