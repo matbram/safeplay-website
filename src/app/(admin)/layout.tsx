@@ -65,7 +65,7 @@ function AdminContent({ children }: { children: React.ReactNode }) {
   // Redirect if not admin
   useEffect(() => {
     if (!loading && (error || !admin)) {
-      router.push("/login?redirect=/admin");
+      router.push("/login?returnTo=/admin");
     }
   }, [loading, error, admin, router]);
 

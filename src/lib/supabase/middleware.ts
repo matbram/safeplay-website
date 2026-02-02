@@ -42,6 +42,7 @@ export async function updateSession(request: NextRequest) {
     "/billing",
     "/settings",
     "/family",
+    "/admin",
   ];
 
   const isProtectedRoute = protectedRoutes.some((route) =>
