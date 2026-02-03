@@ -125,7 +125,7 @@ export async function POST(request: NextRequest) {
               subject,
               html,
               text,
-              replyTo: "hello@trysafeplay.com",
+              replyTo: "support@trysafeplay.com",
             });
 
             // Update notified_at timestamp

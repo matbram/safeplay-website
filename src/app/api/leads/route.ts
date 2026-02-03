@@ -84,7 +84,7 @@ export async function POST(request: NextRequest) {
         subject,
         html,
         text,
-        replyTo: "hello@trysafeplay.com",
+        replyTo: "support@trysafeplay.com",
       });
     } catch (emailError) {
       console.error("Failed to send welcome email:", emailError);

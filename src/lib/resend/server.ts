@@ -14,7 +14,7 @@ export function getResend(): Resend {
 }
 
 export function getFromEmail(): string {
-  return process.env.RESEND_FROM_EMAIL || "SafePlay <hello@trysafeplay.com>";
+  return process.env.RESEND_FROM_EMAIL || "SafePlay <support@trysafeplay.com>";
 }
 
 export type SendEmailOptions = {
