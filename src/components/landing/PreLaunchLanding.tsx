@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Shield, Mail, Check, Loader2, Star, Users, Play } from "lucide-react";
+import { Shield, Mail, Check, Loader2, Star, Users, Play, Bell } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ThemeToggle } from "@/components/ui/theme-toggle";
