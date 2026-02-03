@@ -536,10 +536,13 @@ export function DemoPlayer({
   // Check current time and apply filtering - uses refs to avoid stale closures
   // Matches Chrome extension checkCurrentTime logic exactly
   const checkCurrentTime = useCallback(() => {
-    if (!playerRef.current || !filterEnabledRef.current) return;
+    if (!playerRef.current) return;
 
     const time = playerRef.current.getCurrentTime();
     setCurrentTime(time);
+
+    // Only apply filtering if enabled
+    if (!filterEnabledRef.current) return;
 
     // Check if we're in an interval OR approaching one (within fade buffer)
     const activeInterval = findActiveInterval(time);
