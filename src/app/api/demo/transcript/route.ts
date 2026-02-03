@@ -8,7 +8,7 @@ const ORCHESTRATOR_API_KEY = process.env.ORCHESTRATION_API_KEY;
 const DEMO_VIDEO_IDS = new Set([
   "73_1biulkYk",  // Movie Trailer
   "vkOJ9uNj9EY",  // Music Video
-  "d5XTDmm0KUQ",  // Podcast
+  "G42RJ4mKj1k",  // Podcast
   "AD4raVw11xU",  // Stand Up
   "OQaLic5SE_I",  // Sketch Comedy
 ]);

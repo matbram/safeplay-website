@@ -14,7 +14,7 @@ interface VideoOption {
 const VIDEO_OPTIONS: VideoOption[] = [
   { id: "73_1biulkYk", label: "Movie Trailer", icon: Film },
   { id: "vkOJ9uNj9EY", label: "Music Video", icon: Music },
-  { id: "d5XTDmm0KUQ", label: "Podcast", icon: Mic },
+  { id: "G42RJ4mKj1k", label: "Podcast", icon: Mic },
   { id: "AD4raVw11xU", label: "Stand Up", icon: Laugh },
   { id: "OQaLic5SE_I", label: "Sketch Comedy", icon: Clapperboard },
 ];
