@@ -673,6 +673,9 @@ export function DemoPlayer({
   // Calculate progress percentage
   const progressPercentage = duration > 0 ? (currentTime / duration) * 100 : 0;
 
+  // Debug: log render with current values
+  console.log('[DemoPlayer] render - currentTime:', currentTime, 'duration:', duration, 'progress:', progressPercentage.toFixed(2) + '%');
+
   if (error) {
     return (
       <div
