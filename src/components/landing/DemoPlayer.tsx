@@ -146,6 +146,7 @@ export function DemoPlayer({
   const bleepContextRef = useRef<AudioContext | null>(null);
   const bleepOscillatorRef = useRef<OscillatorNode | null>(null);
   const bleepGainRef = useRef<GainNode | null>(null);
+  const checkCurrentTimeRef = useRef<() => void>(() => {}); // Ref to avoid stale closure in interval
 
   // Use refs for values that need to be accessed in interval callbacks
   // to avoid stale closure issues
@@ -567,13 +568,17 @@ export function DemoPlayer({
     }
   }, [findActiveInterval, findApproachingInterval, startFadeOut, startMute, endMute]);
 
+  // Keep ref updated so interval always calls latest version
+  checkCurrentTimeRef.current = checkCurrentTime;
+
   // Start monitoring playback
   const startMonitoring = useCallback(() => {
     if (checkIntervalRef.current) return;
     initAudioContext();
     // Check every 5ms for precise timing (matching Chrome extension)
-    checkIntervalRef.current = window.setInterval(checkCurrentTime, 5);
-  }, [checkCurrentTime, initAudioContext]);
+    // Use ref to avoid stale closure - interval always calls latest checkCurrentTime
+    checkIntervalRef.current = window.setInterval(() => checkCurrentTimeRef.current(), 5);
+  }, [initAudioContext]);
 
   // Stop monitoring
   const stopMonitoring = useCallback(() => {
