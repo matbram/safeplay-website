@@ -4,8 +4,14 @@ import { createServiceClient } from "@/lib/supabase/server";
 const ORCHESTRATOR_URL = process.env.ORCHESTRATION_API_URL || "https://safeplay-orchestrator-production.up.railway.app";
 const ORCHESTRATOR_API_KEY = process.env.ORCHESTRATION_API_KEY;
 
-// The specific demo video ID that's allowed to be fetched without auth
-const DEMO_VIDEO_ID = "73_1biulkYk";
+// Demo video IDs that are allowed to be fetched without auth
+const DEMO_VIDEO_IDS = new Set([
+  "73_1biulkYk",  // Movie Trailer
+  "vkOJ9uNj9EY",  // Music Video
+  "G42RJ4mKj1k",  // Podcast
+  "AD4raVw11xU",  // Stand Up
+  "OQaLic5SE_I",  // Sketch Comedy
+]);
 
 // Padding settings (matching Chrome extension defaults from src/types/index.ts)
 const PADDING_BEFORE_MS = 100;  // 100ms before word starts
@@ -387,7 +393,7 @@ export async function GET(request: NextRequest) {
 
     if (error || !video?.transcript || forceRefresh) {
       // No transcript in database or force refresh - try to fetch from orchestrator for demo video
-      if (videoId === DEMO_VIDEO_ID) {
+      if (DEMO_VIDEO_IDS.has(videoId)) {
         console.log("[DEMO] Fetching from orchestrator...", forceRefresh ? "(forced refresh)" : "(not in DB)");
 
         try {
