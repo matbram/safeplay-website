@@ -596,7 +596,7 @@ export function DemoPlayer({
   }, [filterEnabled, filterMode, isPlaying, checkCurrentTime]);
 
   // Handle filter toggle
-  const handleFilterToggle = () => {
+  const handleFilterToggle = useCallback(() => {
     const newEnabled = !filterEnabledRef.current;
     setFilterEnabled(newEnabled);
 
@@ -609,10 +609,10 @@ export function DemoPlayer({
         stopBleep();
       }
     }
-  };
+  }, [stopBleep]);
 
   // Handle mode toggle
-  const handleModeToggle = () => {
+  const handleModeToggle = useCallback(() => {
     const newMode = filterModeRef.current === "mute" ? "bleep" : "mute";
     setFilterMode(newMode);
 
@@ -623,10 +623,10 @@ export function DemoPlayer({
         stopBleep();
       }
     }
-  };
+  }, [startBleep, stopBleep]);
 
   // Handle play/pause
-  const handlePlayPause = () => {
+  const handlePlayPause = useCallback(() => {
     if (!playerRef.current || !isReady) return;
     initAudioContext();
 
@@ -635,7 +635,7 @@ export function DemoPlayer({
     } else {
       playerRef.current.playVideo();
     }
-  };
+  }, [isReady, isPlaying, initAudioContext]);
 
   // Handle restart
   const handleRestart = () => {
@@ -658,6 +658,41 @@ export function DemoPlayer({
     playerRef.current.seekTo(newTime, true);
     setCurrentTime(newTime);
   };
+
+  // Handle keyboard controls
+  const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
+    if (!playerRef.current || !isReady) return;
+
+    switch (e.key) {
+      case " ": // Space - play/pause
+      case "k": // K - play/pause (YouTube shortcut)
+        e.preventDefault();
+        handlePlayPause();
+        break;
+      case "ArrowLeft": // Left arrow - seek back 5s
+      case "j": // J - seek back (YouTube shortcut)
+        e.preventDefault();
+        const backTime = Math.max(0, currentTime - 5);
+        playerRef.current.seekTo(backTime, true);
+        setCurrentTime(backTime);
+        break;
+      case "ArrowRight": // Right arrow - seek forward 5s
+      case "l": // L - seek forward (YouTube shortcut)
+        e.preventDefault();
+        const forwardTime = Math.min(duration, currentTime + 5);
+        playerRef.current.seekTo(forwardTime, true);
+        setCurrentTime(forwardTime);
+        break;
+      case "m": // M - toggle filter mode
+        e.preventDefault();
+        handleModeToggle();
+        break;
+      case "f": // F - toggle filter on/off
+        e.preventDefault();
+        handleFilterToggle();
+        break;
+    }
+  }, [isReady, currentTime, duration, handlePlayPause, handleModeToggle, handleFilterToggle]);
 
   // Format time
   const formatTime = (seconds: number): string => {
@@ -685,7 +720,11 @@ export function DemoPlayer({
   }
 
   return (
-    <div className={cn("relative", className)}>
+    <div
+      className={cn("relative outline-none", className)}
+      tabIndex={0}
+      onKeyDown={handleKeyDown}
+    >
       {/* Glow effect behind player */}
       <div className="absolute -inset-4 bg-gradient-to-r from-primary/20 via-primary/10 to-primary/20 rounded-3xl blur-2xl opacity-50" />
 
