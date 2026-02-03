@@ -6,7 +6,7 @@ import { Shield, Mail, Check, Loader2, Bell, Star, Users, Play } from "lucide-re
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ThemeToggle } from "@/components/ui/theme-toggle";
-import { DemoPlayer } from "./DemoPlayer";
+import { DemoVideoSelector } from "./DemoVideoSelector";
 import { cn } from "@/lib/utils";
 
 interface PreLaunchLandingProps {
@@ -188,7 +188,7 @@ export function PreLaunchLanding({ className }: PreLaunchLandingProps) {
 
           {/* Interactive Demo Player */}
           <div id="demo" className="mt-16 lg:mt-20 max-w-5xl mx-auto animate-fade-in-up stagger-5">
-            <DemoPlayer videoId="73_1biulkYk" />
+            <DemoVideoSelector />
           </div>
 
           {/* Social Proof */}

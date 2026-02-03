@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Play, Shield, Check, Star } from "lucide-react";
-import { DemoPlayer } from "./DemoPlayer";
+import { DemoVideoSelector } from "./DemoVideoSelector";
 
 export function Hero() {
   return (
@@ -89,7 +89,7 @@ export function Hero() {
 
         {/* Interactive Demo Player */}
         <div id="demo" className="mt-16 lg:mt-20 max-w-5xl mx-auto animate-fade-in-up stagger-5">
-          <DemoPlayer videoId="73_1biulkYk" />
+          <DemoVideoSelector />
         </div>
 
         {/* Stats Row */}
