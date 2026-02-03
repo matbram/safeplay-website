@@ -540,7 +540,6 @@ export function DemoPlayer({
     if (!playerRef.current) return;
 
     const time = playerRef.current.getCurrentTime();
-    console.log('[DemoPlayer] checkCurrentTime called, time:', time);
     setCurrentTime(time);
 
     // Only apply filtering if enabled
@@ -574,18 +573,15 @@ export function DemoPlayer({
 
   // Start monitoring playback
   const startMonitoring = useCallback(() => {
-    console.log('[DemoPlayer] startMonitoring called, existing interval:', checkIntervalRef.current);
     if (checkIntervalRef.current) return;
     initAudioContext();
     // Check every 5ms for precise timing (matching Chrome extension)
     // Use ref to avoid stale closure - interval always calls latest checkCurrentTime
     checkIntervalRef.current = window.setInterval(() => checkCurrentTimeRef.current(), 5);
-    console.log('[DemoPlayer] interval created:', checkIntervalRef.current);
   }, [initAudioContext]);
 
   // Stop monitoring
   const stopMonitoring = useCallback(() => {
-    console.log('[DemoPlayer] stopMonitoring called, interval:', checkIntervalRef.current);
     if (checkIntervalRef.current) {
       clearInterval(checkIntervalRef.current);
       checkIntervalRef.current = null;
@@ -672,9 +668,6 @@ export function DemoPlayer({
 
   // Calculate progress percentage
   const progressPercentage = duration > 0 ? (currentTime / duration) * 100 : 0;
-
-  // Debug: log render with current values
-  console.log('[DemoPlayer] render - currentTime:', currentTime, 'duration:', duration, 'progress:', progressPercentage.toFixed(2) + '%');
 
   if (error) {
     return (
@@ -793,7 +786,7 @@ export function DemoPlayer({
             >
               {/* Progress */}
               <div
-                className="absolute left-0 top-0 h-full bg-primary rounded-full transition-all"
+                className="absolute left-0 top-0 h-full bg-primary rounded-full"
                 style={{ width: `${progressPercentage}%` }}
               >
                 {/* Scrubber */}
