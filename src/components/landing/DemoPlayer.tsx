@@ -540,6 +540,7 @@ export function DemoPlayer({
     if (!playerRef.current) return;
 
     const time = playerRef.current.getCurrentTime();
+    console.log('[DemoPlayer] checkCurrentTime called, time:', time);
     setCurrentTime(time);
 
     // Only apply filtering if enabled
@@ -573,15 +574,18 @@ export function DemoPlayer({
 
   // Start monitoring playback
   const startMonitoring = useCallback(() => {
+    console.log('[DemoPlayer] startMonitoring called, existing interval:', checkIntervalRef.current);
     if (checkIntervalRef.current) return;
     initAudioContext();
     // Check every 5ms for precise timing (matching Chrome extension)
     // Use ref to avoid stale closure - interval always calls latest checkCurrentTime
     checkIntervalRef.current = window.setInterval(() => checkCurrentTimeRef.current(), 5);
+    console.log('[DemoPlayer] interval created:', checkIntervalRef.current);
   }, [initAudioContext]);
 
   // Stop monitoring
   const stopMonitoring = useCallback(() => {
+    console.log('[DemoPlayer] stopMonitoring called, interval:', checkIntervalRef.current);
     if (checkIntervalRef.current) {
       clearInterval(checkIntervalRef.current);
       checkIntervalRef.current = null;
