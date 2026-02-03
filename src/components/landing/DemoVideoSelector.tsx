@@ -52,8 +52,8 @@ export function DemoVideoSelector({ className }: DemoVideoSelectorProps) {
         })}
       </div>
 
-      {/* Demo Player */}
-      <DemoPlayer videoId={selectedVideoId} />
+      {/* Demo Player - key forces remount when video changes to reset all state */}
+      <DemoPlayer key={selectedVideoId} videoId={selectedVideoId} />
     </div>
   );
 }
