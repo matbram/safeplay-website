@@ -36,6 +36,13 @@ export async function sendEmail(options: SendEmailOptions) {
     html: options.html,
     text: options.text,
     replyTo: options.replyTo,
+    headers: {
+      // List-Unsubscribe helps with deliverability - Gmail looks for this
+      "List-Unsubscribe": "<mailto:support@trysafeplay.com?subject=Unsubscribe>",
+      "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+      // Precedence header signals this is a bulk/transactional email
+      "X-Priority": "3",
+    },
   });
 
   if (error) {
