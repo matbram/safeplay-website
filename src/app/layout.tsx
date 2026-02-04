@@ -17,6 +17,10 @@ export const metadata: Metadata = {
   ],
   authors: [{ name: "SafePlay" }],
   creator: "SafePlay",
+  icons: {
+    icon: "/icon.svg",
+    apple: "/apple-icon.svg",
+  },
   openGraph: {
     type: "website",
     locale: "en_US",
