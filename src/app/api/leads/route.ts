@@ -1,4 +1,6 @@
 import { createServiceClient } from "@/lib/supabase/server";
+import { sendEmail } from "@/lib/resend/server";
+import { welcomeEmail } from "@/lib/resend/emails";
 import { NextRequest, NextResponse } from "next/server";
 
 /**
@@ -72,6 +74,21 @@ export async function POST(request: NextRequest) {
         });
       }
       throw error;
+    }
+
+    // Send welcome email to new subscribers (don't fail the request if email fails)
+    try {
+      const { subject, html, text } = welcomeEmail();
+      await sendEmail({
+        to: email.toLowerCase().trim(),
+        subject,
+        html,
+        text,
+        replyTo: "support@trysafeplay.com",
+      });
+    } catch (emailError) {
+      console.error("Failed to send welcome email:", emailError);
+      // Don't fail the request - the lead was saved successfully
     }
 
     return NextResponse.json({
