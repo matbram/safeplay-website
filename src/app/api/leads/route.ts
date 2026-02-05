@@ -1,5 +1,5 @@
 import { createServiceClient } from "@/lib/supabase/server";
-import { sendEmail } from "@/lib/resend/server";
+import { sendEmail, addContactToAudience } from "@/lib/resend/server";
 import { welcomeEmail } from "@/lib/resend/emails";
 import { NextRequest, NextResponse } from "next/server";
 
@@ -76,11 +76,13 @@ export async function POST(request: NextRequest) {
       throw error;
     }
 
+    const normalizedEmail = email.toLowerCase().trim();
+
     // Send welcome email to new subscribers (don't fail the request if email fails)
     try {
       const { subject, html, text } = welcomeEmail();
       await sendEmail({
-        to: email.toLowerCase().trim(),
+        to: normalizedEmail,
         subject,
         html,
         text,
@@ -88,6 +90,14 @@ export async function POST(request: NextRequest) {
       });
     } catch (emailError) {
       console.error("Failed to send welcome email:", emailError);
+      // Don't fail the request - the lead was saved successfully
+    }
+
+    // Add contact to Resend audience (don't fail the request if this fails)
+    try {
+      await addContactToAudience({ email: normalizedEmail });
+    } catch (audienceError) {
+      console.error("Failed to add contact to Resend audience:", audienceError);
       // Don't fail the request - the lead was saved successfully
     }
 
