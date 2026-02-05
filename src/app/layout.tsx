@@ -60,7 +60,7 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <head>
-        <meta name="color-scheme" content="dark light" />
+        <meta name="color-scheme" content="light" />
       </head>
       <body className="font-sans antialiased">
         <ThemeProvider>

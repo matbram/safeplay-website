@@ -18,13 +18,13 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     setMounted(true);
-    // Check localStorage first, then system preference
+    // Check localStorage for user's explicit preference only
+    // System preference is ignored - light theme is always the default
     const stored = localStorage.getItem("theme") as Theme | null;
     if (stored) {
       setThemeState(stored);
-    } else if (window.matchMedia("(prefers-color-scheme: dark)").matches) {
-      setThemeState("dark");
     }
+    // No system preference check - defaults to "light" from initial state
   }, []);
 
   useEffect(() => {
