@@ -14,8 +14,8 @@ const DEMO_VIDEO_IDS = new Set([
 ]);
 
 // Padding settings (matching Chrome extension defaults from src/types/index.ts)
-const PADDING_BEFORE_MS = 100;  // 100ms before word starts
-const PADDING_AFTER_MS = 30;    // 30ms after word ends
+const PADDING_BEFORE_MS = 150;  // 150ms before word starts
+const PADDING_AFTER_MS = 25;    // 25ms after word ends
 const MERGE_THRESHOLD_MS = 100;
 const MAX_WORD_DURATION_MS = 400; // Cap single word duration - prevents silence gaps from being included
 
@@ -49,20 +49,26 @@ const PROFANITY_MAP: Map<string, SeverityLevel> = new Map([
   // Severe
   ["fuck", "severe"],
   ["fucking", "severe"],
+  ["fuckin", "severe"],
   ["fucked", "severe"],
   ["fucker", "severe"],
   ["fuckers", "severe"],
   ["fucks", "severe"],
   ["motherfucker", "severe"],
   ["motherfucking", "severe"],
+  ["motherfuckin", "severe"],
   ["cunt", "severe"],
   ["cunts", "severe"],
+  ["nigga", "severe"],
+  ["nigger", "severe"],
 
   // Moderate
   ["shit", "moderate"],
   ["shits", "moderate"],
   ["shitty", "moderate"],
+  ["shitting", "moderate"],
   ["bullshit", "moderate"],
+  ["batshit", "moderate"],
   ["horseshit", "moderate"],
   ["ass", "moderate"],
   ["asses", "moderate"],
@@ -76,6 +82,7 @@ const PROFANITY_MAP: Map<string, SeverityLevel> = new Map([
   ["dick", "moderate"],
   ["dicks", "moderate"],
   ["dickhead", "moderate"],
+  ["penis", "moderate"],
   ["pussy", "moderate"],
   ["prick", "moderate"],
   ["slut", "moderate"],
