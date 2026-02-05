@@ -6,7 +6,7 @@ import { Footer } from "@/components/layout/Footer";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Mail, MessageSquare, Clock, Send, CheckCircle } from "lucide-react";
+import { Mail, Clock, Send, CheckCircle } from "lucide-react";
 
 const contactMethods = [
   {
@@ -15,13 +15,6 @@ const contactMethods = [
     description: "Send us an email anytime",
     value: "support@trysafeplay.com",
     href: "mailto:support@trysafeplay.com",
-  },
-  {
-    icon: MessageSquare,
-    title: "Live Chat",
-    description: "Chat with our support team",
-    value: "Available 9am-5pm EST",
-    href: "#",
   },
   {
     icon: Clock,
