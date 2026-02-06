@@ -180,3 +180,73 @@ https://trysafeplay.com
 
   return { subject, html, text };
 }
+
+/**
+ * Contact form submission email sent to support
+ * Contains the user's message and contact details
+ */
+export function contactFormEmail(data: {
+  firstName: string;
+  lastName: string;
+  email: string;
+  subject: string;
+  message: string;
+}): { subject: string; html: string; text: string } {
+  const subject = `Contact Form: ${data.subject}`;
+  const preheader = `New message from ${data.firstName} ${data.lastName}`;
+
+  const html = wrapEmail(`
+    <table width="100%" cellpadding="0" cellspacing="0">
+      <tr>
+        <td style="padding-top: 28px;">
+          <p style="color: ${colors.text}; font-size: 15px; margin: 0 0 20px 0; line-height: 1.6;">
+            New contact form submission:
+          </p>
+
+          <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom: 20px;">
+            <tr>
+              <td style="padding: 12px 0; border-bottom: 1px solid ${colors.cardBorder};">
+                <span style="color: ${colors.textMuted}; font-size: 13px;">From:</span><br>
+                <span style="color: ${colors.text}; font-size: 15px;">${data.firstName} ${data.lastName}</span>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding: 12px 0; border-bottom: 1px solid ${colors.cardBorder};">
+                <span style="color: ${colors.textMuted}; font-size: 13px;">Email:</span><br>
+                <a href="mailto:${data.email}" style="color: ${colors.primary}; font-size: 15px;">${data.email}</a>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding: 12px 0; border-bottom: 1px solid ${colors.cardBorder};">
+                <span style="color: ${colors.textMuted}; font-size: 13px;">Subject:</span><br>
+                <span style="color: ${colors.text}; font-size: 15px;">${data.subject}</span>
+              </td>
+            </tr>
+          </table>
+
+          <p style="color: ${colors.textMuted}; font-size: 13px; margin: 0 0 8px 0;">Message:</p>
+          <div style="background-color: ${colors.background}; border-radius: 8px; padding: 16px; border: 1px solid ${colors.cardBorder};">
+            <p style="color: ${colors.text}; font-size: 15px; margin: 0; line-height: 1.6; white-space: pre-wrap;">${data.message}</p>
+          </div>
+        </td>
+      </tr>
+    </table>
+  `, preheader);
+
+  const text = `
+New contact form submission
+
+From: ${data.firstName} ${data.lastName}
+Email: ${data.email}
+Subject: ${data.subject}
+
+Message:
+${data.message}
+
+---
+SafePlay · Making YouTube safe for everyone
+https://trysafeplay.com
+  `.trim();
+
+  return { subject, html, text };
+}

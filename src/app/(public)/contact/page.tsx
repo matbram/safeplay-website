@@ -6,22 +6,15 @@ import { Footer } from "@/components/layout/Footer";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Mail, MessageSquare, MapPin, Clock, Send, CheckCircle } from "lucide-react";
+import { Mail, Clock, Send, CheckCircle } from "lucide-react";
 
 const contactMethods = [
   {
     icon: Mail,
     title: "Email Us",
     description: "Send us an email anytime",
-    value: "support@safeplay.app",
-    href: "mailto:support@safeplay.app",
-  },
-  {
-    icon: MessageSquare,
-    title: "Live Chat",
-    description: "Chat with our support team",
-    value: "Available 9am-5pm EST",
-    href: "#",
+    value: "support@trysafeplay.com",
+    href: "mailto:support@trysafeplay.com",
   },
   {
     icon: Clock,
@@ -35,14 +28,53 @@ const contactMethods = [
 export default function ContactPage() {
   const [isSubmitted, setIsSubmitted] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [formData, setFormData] = useState({
+    firstName: "",
+    lastName: "",
+    email: "",
+    subject: "",
+    message: "",
+  });
+
+  const handleInputChange = (
+    e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
+  ) => {
+    const { id, value } = e.target;
+    setFormData((prev) => ({ ...prev, [id]: value }));
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
-    // Simulate form submission
-    await new Promise((resolve) => setTimeout(resolve, 1000));
-    setIsSubmitted(true);
-    setIsLoading(false);
+    setError(null);
+
+    try {
+      const response = await fetch("/api/contact", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(formData),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to send message");
+      }
+
+      setIsSubmitted(true);
+      setFormData({
+        firstName: "",
+        lastName: "",
+        email: "",
+        subject: "",
+        message: "",
+      });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to send message");
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -67,7 +99,7 @@ export default function ContactPage() {
         {/* Contact Methods */}
         <section className="pb-12">
           <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-            <div className="grid md:grid-cols-3 gap-6">
+            <div className="grid md:grid-cols-2 gap-6 max-w-2xl mx-auto">
               {contactMethods.map((method) => (
                 <div key={method.title} className="p-6 rounded-2xl bg-card border border-border text-center">
                   <div className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center mx-auto mb-4">
@@ -115,25 +147,56 @@ export default function ContactPage() {
                   </div>
 
                   <form onSubmit={handleSubmit} className="space-y-6">
+                    {error && (
+                      <div className="p-4 rounded-lg bg-destructive/10 border border-destructive/20 text-destructive text-sm">
+                        {error}
+                      </div>
+                    )}
+
                     <div className="grid sm:grid-cols-2 gap-6">
                       <div className="space-y-2">
                         <Label htmlFor="firstName">First Name</Label>
-                        <Input id="firstName" placeholder="John" required />
+                        <Input
+                          id="firstName"
+                          placeholder="John"
+                          value={formData.firstName}
+                          onChange={handleInputChange}
+                          required
+                        />
                       </div>
                       <div className="space-y-2">
                         <Label htmlFor="lastName">Last Name</Label>
-                        <Input id="lastName" placeholder="Doe" required />
+                        <Input
+                          id="lastName"
+                          placeholder="Doe"
+                          value={formData.lastName}
+                          onChange={handleInputChange}
+                          required
+                        />
                       </div>
                     </div>
 
                     <div className="space-y-2">
                       <Label htmlFor="email">Email Address</Label>
-                      <Input id="email" type="email" placeholder="you@example.com" required />
+                      <Input
+                        id="email"
+                        type="email"
+                        placeholder="you@example.com"
+                        value={formData.email}
+                        onChange={handleInputChange}
+                        required
+                      />
                     </div>
 
                     <div className="space-y-2">
                       <Label htmlFor="subject">Subject</Label>
-                      <Input id="subject" placeholder="How can we help?" required />
+                      <Input
+                        id="subject"
+                        placeholder="How can we help?"
+                        value={formData.subject}
+                        onChange={handleInputChange}
+                        required
+                      />
                     </div>
 
                     <div className="space-y-2">
@@ -143,6 +206,8 @@ export default function ContactPage() {
                         rows={5}
                         className="w-full rounded-lg border border-input bg-background px-4 py-3 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent resize-none"
                         placeholder="Tell us more about your question or feedback..."
+                        value={formData.message}
+                        onChange={handleInputChange}
                         required
                       />
                     </div>
