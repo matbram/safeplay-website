@@ -5,7 +5,6 @@ import { fetchYouTubeDuration } from "@/lib/youtube";
 import { fetchWithRetry, isRetryableError } from "@/lib/retry";
 
 const ORCHESTRATOR_URL = process.env.ORCHESTRATION_API_URL || "https://safeplay-orchestrator-80308222868.us-central1.run.app";
-const ORCHESTRATOR_API_KEY = process.env.ORCHESTRATION_API_KEY;
 
 // Logging helper for consistent format
 function log(context: string, message: string, data?: Record<string, unknown>) {
@@ -77,8 +76,8 @@ export async function GET(
 
     const headers: Record<string, string> = {};
 
-    if (ORCHESTRATOR_API_KEY) {
-      headers["Authorization"] = `Bearer ${ORCHESTRATOR_API_KEY}`;
+    if (auth.accessToken) {
+      headers["Authorization"] = `Bearer ${auth.accessToken}`;
     }
 
     let response: Response;

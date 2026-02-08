@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
 
 const ORCHESTRATOR_URL = process.env.ORCHESTRATION_API_URL || "https://safeplay-orchestrator-80308222868.us-central1.run.app";
-const ORCHESTRATOR_API_KEY = process.env.ORCHESTRATION_API_KEY;
 
 // Demo video IDs that are allowed to be fetched without auth
 const DEMO_VIDEO_IDS = new Set([
@@ -407,9 +406,6 @@ export async function GET(request: NextRequest) {
           const headers: Record<string, string> = {
             "Content-Type": "application/json",
           };
-          if (ORCHESTRATOR_API_KEY) {
-            headers["Authorization"] = `Bearer ${ORCHESTRATOR_API_KEY}`;
-          }
 
           // First try to get cached transcript from orchestrator
           const orchestratorResponse = await fetch(

@@ -8,6 +8,7 @@ export interface AuthResult {
     email?: string;
   } | null;
   error: string | null;
+  accessToken: string | null;
 }
 
 /**
@@ -37,7 +38,7 @@ async function authenticateWithToken(token: string): Promise<AuthResult> {
     const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
     if (!supabaseUrl || !supabaseAnonKey) {
-      return { user: null, error: "Server configuration error" };
+      return { user: null, error: "Server configuration error", accessToken: null };
     }
 
     // Create a client with the user's token
@@ -53,7 +54,7 @@ async function authenticateWithToken(token: string): Promise<AuthResult> {
     const { data: { user }, error } = await supabase.auth.getUser(token);
 
     if (error || !user) {
-      return { user: null, error: "Invalid or expired token" };
+      return { user: null, error: "Invalid or expired token", accessToken: null };
     }
 
     return {
@@ -62,10 +63,11 @@ async function authenticateWithToken(token: string): Promise<AuthResult> {
         email: user.email,
       },
       error: null,
+      accessToken: token,
     };
   } catch (error) {
     console.error("Token authentication error:", error);
-    return { user: null, error: "Authentication failed" };
+    return { user: null, error: "Authentication failed", accessToken: null };
   }
 }
 
@@ -78,8 +80,11 @@ async function authenticateWithSession(): Promise<AuthResult> {
     const { data: { user }, error } = await supabase.auth.getUser();
 
     if (error || !user) {
-      return { user: null, error: "Not authenticated" };
+      return { user: null, error: "Not authenticated", accessToken: null };
     }
+
+    // Get the session to extract the access token for forwarding to orchestrator
+    const { data: { session } } = await supabase.auth.getSession();
 
     return {
       user: {
@@ -87,9 +92,10 @@ async function authenticateWithSession(): Promise<AuthResult> {
         email: user.email,
       },
       error: null,
+      accessToken: session?.access_token ?? null,
     };
   } catch (error) {
     console.error("Session authentication error:", error);
-    return { user: null, error: "Authentication failed" };
+    return { user: null, error: "Authentication failed", accessToken: null };
   }
 }
