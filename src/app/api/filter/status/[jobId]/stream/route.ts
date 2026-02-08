@@ -4,7 +4,7 @@ import { authenticateRequest } from "@/lib/auth-helper";
 import { fetchYouTubeDuration } from "@/lib/youtube";
 import { fetchWithRetry, isRetryableError } from "@/lib/retry";
 
-const ORCHESTRATOR_URL = process.env.ORCHESTRATION_API_URL || "https://safeplay-orchestrator-production.up.railway.app";
+const ORCHESTRATOR_URL = process.env.ORCHESTRATION_API_URL || "https://safeplay-orchestrator-80308222868.us-central1.run.app";
 const ORCHESTRATOR_API_KEY = process.env.ORCHESTRATION_API_KEY;
 
 // Logging helper for consistent format
