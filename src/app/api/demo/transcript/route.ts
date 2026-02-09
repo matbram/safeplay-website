@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
+import { prepareTranscriptForCache } from "@/lib/transcript-utils";
 
 const ORCHESTRATOR_URL = process.env.ORCHESTRATION_API_URL || "https://safeplay-orchestrator-80308222868.us-central1.run.app";
 
@@ -434,7 +435,7 @@ export async function GET(request: NextRequest) {
                 channel_name: data.video?.channel_name || null,
                 duration_seconds: durationSeconds,
                 thumbnail_url: `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`,
-                transcript: data.transcript,
+                transcript: prepareTranscriptForCache(data.transcript),
                 cached_at: new Date().toISOString(),
               }, { onConflict: "youtube_id" });
 
