@@ -75,26 +75,28 @@ interface RelatedJob {
   completed_at: string | null;
 }
 
+interface OrchestratorVideo {
+  id?: string;
+  youtube_id?: string;
+  status?: string;
+  error_message?: string;
+  storage_path?: string;
+  processing_started_at?: string;
+  processing_completed_at?: string;
+}
+
 interface OrchestratorJob {
   id?: string;
   video_id?: string;
   status?: string;
   progress?: number;
+  error?: string;
   error_message?: string;
   error_code?: string;
   external_transcription_id?: string;
   webhook_received_at?: string;
   created_at?: string;
-  video?: {
-    id?: string;
-    youtube_id?: string;
-    status?: string;
-    error_message?: string;
-    storage_path?: string;
-    processing_started_at?: string;
-    processing_completed_at?: string;
-  };
-  [key: string]: unknown;
+  video?: OrchestratorVideo;
 }
 
 const statusConfig: Record<
