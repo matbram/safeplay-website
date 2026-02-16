@@ -410,7 +410,7 @@ export default function FilterJobDetailPage() {
               Transcript saved successfully
             </p>
             <p className="text-xs text-success/70 mt-0.5">
-              The transcript from the orchestrator has been saved to the local database.
+              The transcript from the orchestrator has been saved to the videos table in Supabase.
             </p>
           </div>
         </div>
@@ -426,7 +426,7 @@ export default function FilterJobDetailPage() {
             </p>
             <p className="text-xs text-warning/70 mt-0.5">
               {orchestratorStatus?.transcript
-                ? "The orchestrator has a transcript available. Click 'Save Transcript' to save it to the local database."
+                ? "The orchestrator has a transcript available. Click 'Save Transcript' to save it to Supabase."
                 : "This job finished without saving a transcript. Use Retranscribe to re-process the existing download, or Retry to start from scratch."
               }
             </p>
