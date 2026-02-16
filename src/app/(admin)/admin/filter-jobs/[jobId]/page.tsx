@@ -20,6 +20,7 @@ import {
   Calendar,
   Hash,
   RefreshCw,
+  Download,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -97,6 +98,13 @@ interface OrchestratorJob {
   webhook_received_at?: string;
   created_at?: string;
   video?: OrchestratorVideo;
+  transcript?: {
+    id?: string;
+    full_text?: string;
+    segments?: unknown[];
+    title?: string;
+    duration?: number;
+  };
 }
 
 const statusConfig: Record<
@@ -162,6 +170,8 @@ export default function FilterJobDetailPage() {
   const [error, setError] = useState<string | null>(null);
   const pollingRef = useRef<NodeJS.Timeout | null>(null);
 
+  const [transcriptSaved, setTranscriptSaved] = useState(false);
+
   // Modal state
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [retryOpen, setRetryOpen] = useState(false);
@@ -193,6 +203,11 @@ export default function FilterJobDetailPage() {
         setOrchestratorStatus(data.orchestrator_status);
         setOrchestratorError(data.orchestrator_error || null);
         setRelatedJobs(data.related_jobs || []);
+
+        // Detect if transcript was auto-saved by the API
+        if (data.transcript_saved) {
+          setTranscriptSaved(true);
+        }
 
         // Start or stop polling based on job status
         if (isActiveJob(data.job?.status)) {
@@ -268,6 +283,33 @@ export default function FilterJobDetailPage() {
       }
     } catch {
       alert("Action failed. Check console for details.");
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleSaveTranscript = async () => {
+    if (!job) return;
+    setActionLoading(true);
+    try {
+      const response = await fetch("/api/admin/filter-jobs", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "save_transcript",
+          job_id: job.job_id,
+        }),
+      });
+
+      if (response.ok) {
+        setTranscriptSaved(true);
+        fetchJobDetail();
+      } else {
+        const data = await response.json();
+        alert(`Failed to save transcript: ${data.error}`);
+      }
+    } catch {
+      alert("Failed to save transcript. Check console for details.");
     } finally {
       setActionLoading(false);
     }
@@ -359,8 +401,23 @@ export default function FilterJobDetailPage() {
         </div>
       </div>
 
+      {/* Transcript saved success banner */}
+      {transcriptSaved && (
+        <div className="flex items-center gap-3 p-4 rounded-lg bg-success/10 border border-success/20">
+          <CheckCircle className="w-5 h-5 text-success shrink-0" />
+          <div className="flex-1">
+            <p className="text-sm font-medium text-success">
+              Transcript saved successfully
+            </p>
+            <p className="text-xs text-success/70 mt-0.5">
+              The transcript from the orchestrator has been saved to the local database.
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* Missing transcript warning */}
-      {job.status === "completed" && video && !video.has_transcript && (
+      {job.status === "completed" && video && !video.has_transcript && !transcriptSaved && (
         <div className="flex items-center gap-3 p-4 rounded-lg bg-warning/10 border border-warning/20">
           <AlertTriangle className="w-5 h-5 text-warning shrink-0" />
           <div className="flex-1">
@@ -368,9 +425,26 @@ export default function FilterJobDetailPage() {
               Job marked as completed but transcript is missing
             </p>
             <p className="text-xs text-warning/70 mt-0.5">
-              This job finished without saving a transcript. Use Retranscribe to re-process the existing download, or Retry to start from scratch.
+              {orchestratorStatus?.transcript
+                ? "The orchestrator has a transcript available. Click 'Save Transcript' to save it to the local database."
+                : "This job finished without saving a transcript. Use Retranscribe to re-process the existing download, or Retry to start from scratch."
+              }
             </p>
           </div>
+          {orchestratorStatus?.transcript && (
+            <Button
+              size="sm"
+              disabled={actionLoading}
+              onClick={handleSaveTranscript}
+            >
+              {actionLoading ? (
+                <Loader2 className="w-4 h-4 animate-spin mr-1.5" />
+              ) : (
+                <Download className="w-4 h-4 mr-1.5" />
+              )}
+              Save Transcript
+            </Button>
+          )}
         </div>
       )}
 
@@ -459,6 +533,20 @@ export default function FilterJobDetailPage() {
                 >
                   <FileAudio className="w-4 h-4 mr-1.5" />
                   Retranscribe
+                </Button>
+              )}
+              {orchestratorStatus?.transcript && video && !video.has_transcript && !transcriptSaved && (
+                <Button
+                  size="sm"
+                  disabled={actionLoading}
+                  onClick={handleSaveTranscript}
+                >
+                  {actionLoading ? (
+                    <Loader2 className="w-4 h-4 animate-spin mr-1.5" />
+                  ) : (
+                    <Download className="w-4 h-4 mr-1.5" />
+                  )}
+                  Save Transcript
                 </Button>
               )}
               <Button
@@ -728,6 +816,18 @@ export default function FilterJobDetailPage() {
                       {orchestratorStatus.webhook_received_at
                         ? formatDate(new Date(orchestratorStatus.webhook_received_at))
                         : "Not yet"
+                      }
+                    </p>
+                  </div>
+                  <div className="p-3 rounded-lg bg-muted/50">
+                    <p className="text-xs text-muted-foreground">Transcript in Response</p>
+                    <p className={cn(
+                      "text-sm font-medium",
+                      orchestratorStatus.transcript ? "text-success" : "text-muted-foreground"
+                    )}>
+                      {orchestratorStatus.transcript
+                        ? `Available (${orchestratorStatus.transcript.segments?.length || 0} segments)`
+                        : "Not present"
                       }
                     </p>
                   </div>

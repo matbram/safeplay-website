@@ -1,6 +1,7 @@
 import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/admin-auth";
+import { prepareTranscriptForCache } from "@/lib/transcript-utils";
 
 const ORCHESTRATOR_URL =
   process.env.ORCHESTRATION_API_URL ||
@@ -206,6 +207,68 @@ export async function GET(
       hasDownload = true;
     }
 
+    // Auto-save transcript: if orchestrator has a transcript but local DB doesn't, save it now
+    let transcriptSaved = false;
+    if (
+      orchestratorStatus?.transcript &&
+      orchestratorStatus.status === "completed" &&
+      !videoRecord?.transcript
+    ) {
+      try {
+        const cleanedTranscript = prepareTranscriptForCache(
+          orchestratorStatus.transcript as Record<string, unknown>
+        );
+
+        const upsertData: Record<string, unknown> = {
+          youtube_id: job.youtube_id,
+          transcript: cleanedTranscript,
+          cached_at: new Date().toISOString(),
+        };
+
+        // Preserve existing video metadata or use orchestrator data
+        if (orchestratorStatus.video?.storage_path || orchestratorStatus.storage_path) {
+          upsertData.storage_path = orchestratorStatus.video?.storage_path || orchestratorStatus.storage_path;
+        }
+        if (!videoRecord?.title) {
+          upsertData.title = orchestratorStatus.transcript?.title || orchestratorStatus.video?.title || "Unknown Video";
+        }
+        if (!videoRecord?.channel_name && orchestratorStatus.video?.channel_name) {
+          upsertData.channel_name = orchestratorStatus.video.channel_name;
+        }
+        if (!videoRecord?.duration_seconds && orchestratorStatus.transcript?.duration) {
+          upsertData.duration_seconds = Math.round(Number(orchestratorStatus.transcript.duration));
+        }
+        if (!videoRecord?.thumbnail_url) {
+          upsertData.thumbnail_url = `https://img.youtube.com/vi/${job.youtube_id}/hqdefault.jpg`;
+        }
+
+        const { error: upsertError } = await supabase
+          .from("videos")
+          .upsert(upsertData, { onConflict: "youtube_id" });
+
+        if (!upsertError) {
+          transcriptSaved = true;
+          // Also mark the job as completed if it wasn't already
+          if (liveStatus !== "completed") {
+            await supabase
+              .from("filter_jobs")
+              .update({
+                status: "completed",
+                progress: 100,
+                completed_at: new Date().toISOString(),
+              })
+              .eq("job_id", jobId);
+            liveStatus = "completed";
+            liveProgress = 100;
+          }
+        } else {
+          console.error("Failed to auto-save transcript:", upsertError);
+        }
+      } catch (err) {
+        console.error("Error auto-saving transcript:", err);
+      }
+    }
+
     // Get related jobs for the same video (other attempts)
     const { data: relatedJobs } = await supabase
       .from("filter_jobs")
@@ -233,15 +296,27 @@ export async function GET(
             channel_name: videoRecord.channel_name,
             duration_seconds: videoRecord.duration_seconds,
             thumbnail_url: videoRecord.thumbnail_url,
-            has_transcript: !!videoRecord.transcript,
+            has_transcript: !!videoRecord.transcript || transcriptSaved,
             has_storage_file: storageFileExists,
             storage_path: storagePath || null,
             cached_at: videoRecord.cached_at,
           }
-        : null,
+        : transcriptSaved
+          ? {
+              title: (orchestratorStatus?.transcript as Record<string, unknown>)?.title as string || "Unknown Video",
+              channel_name: null,
+              duration_seconds: 0,
+              thumbnail_url: `https://img.youtube.com/vi/${job.youtube_id}/hqdefault.jpg`,
+              has_transcript: true,
+              has_storage_file: false,
+              storage_path: null,
+              cached_at: new Date().toISOString(),
+            }
+          : null,
       orchestrator_status: orchestratorStatus,
       orchestrator_error: orchestratorError,
       related_jobs: relatedJobs || [],
+      transcript_saved: transcriptSaved,
     });
   } catch (error) {
     console.error("Failed to fetch filter job detail:", error);

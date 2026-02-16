@@ -1,6 +1,7 @@
 import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdmin, logAdminAction } from "@/lib/admin-auth";
+import { prepareTranscriptForCache } from "@/lib/transcript-utils";
 
 const ORCHESTRATOR_URL =
   process.env.ORCHESTRATION_API_URL ||
@@ -484,6 +485,38 @@ export async function POST(request: NextRequest) {
             .eq("job_id", job_id);
         }
 
+        // If orchestrator returned an immediate completion with transcript, save it
+        let transcriptSaved = false;
+        if (orchData.transcript && orchData.status === "completed") {
+          try {
+            const cleanedTranscript = prepareTranscriptForCache(
+              orchData.transcript as Record<string, unknown>
+            );
+            const { error: upsertError } = await supabase
+              .from("videos")
+              .upsert({
+                youtube_id: targetYoutubeId,
+                transcript: cleanedTranscript,
+                title: orchData.transcript?.title || orchData.video?.title || "Unknown Video",
+                thumbnail_url: `https://img.youtube.com/vi/${targetYoutubeId}/hqdefault.jpg`,
+                cached_at: new Date().toISOString(),
+              }, { onConflict: "youtube_id" });
+
+            if (!upsertError) {
+              transcriptSaved = true;
+              // Mark job as completed
+              if (job_id) {
+                await supabase
+                  .from("filter_jobs")
+                  .update({ status: "completed", progress: 100, completed_at: new Date().toISOString() })
+                  .eq("job_id", orchData.job_id || job_id);
+              }
+            }
+          } catch (err) {
+            console.error("Failed to save transcript on retry:", err);
+          }
+        }
+
         await logAdminAction(
           admin.id,
           "retry_filter_job",
@@ -493,6 +526,7 @@ export async function POST(request: NextRequest) {
             youtube_id: targetYoutubeId,
             new_job_id: orchData.job_id,
             status: orchData.status,
+            transcript_saved: transcriptSaved,
           },
           request
         );
@@ -501,6 +535,7 @@ export async function POST(request: NextRequest) {
           success: true,
           job_id: orchData.job_id,
           status: orchData.status,
+          transcript_saved: transcriptSaved,
         });
       }
 
@@ -587,6 +622,35 @@ export async function POST(request: NextRequest) {
             .eq("job_id", job_id);
         }
 
+        // If orchestrator returned an immediate completion with transcript, save it
+        let retranscribeSaved = false;
+        if (orchData.transcript && orchData.status === "completed") {
+          try {
+            const cleanedTranscript = prepareTranscriptForCache(
+              orchData.transcript as Record<string, unknown>
+            );
+            const { error: upsertError } = await supabase
+              .from("videos")
+              .upsert({
+                youtube_id: targetYoutubeId,
+                transcript: cleanedTranscript,
+                cached_at: new Date().toISOString(),
+              }, { onConflict: "youtube_id" });
+
+            if (!upsertError) {
+              retranscribeSaved = true;
+              if (job_id) {
+                await supabase
+                  .from("filter_jobs")
+                  .update({ status: "completed", progress: 100, completed_at: new Date().toISOString() })
+                  .eq("job_id", orchData.job_id || job_id);
+              }
+            }
+          } catch (err) {
+            console.error("Failed to save transcript on retranscribe:", err);
+          }
+        }
+
         await logAdminAction(
           admin.id,
           "retranscribe_filter_job",
@@ -595,6 +659,7 @@ export async function POST(request: NextRequest) {
           {
             youtube_id: targetYoutubeId,
             new_job_id: orchData.job_id,
+            transcript_saved: retranscribeSaved,
           },
           request
         );
@@ -603,6 +668,123 @@ export async function POST(request: NextRequest) {
           success: true,
           job_id: orchData.job_id,
           status: orchData.status,
+          transcript_saved: retranscribeSaved,
+        });
+      }
+
+      case "save_transcript": {
+        // Manually fetch transcript from orchestrator and save it to local DB
+        if (!job_id) {
+          return NextResponse.json(
+            { error: "job_id is required" },
+            { status: 400 }
+          );
+        }
+
+        // Get the job
+        const { data: saveJob } = await supabase
+          .from("filter_jobs")
+          .select("*")
+          .eq("job_id", job_id)
+          .single();
+
+        if (!saveJob) {
+          return NextResponse.json(
+            { error: "Job not found" },
+            { status: 404 }
+          );
+        }
+
+        // Fetch live status from orchestrator
+        const saveToken = await getAdminAccessToken();
+        const saveHeaders: Record<string, string> = {};
+        if (saveToken) {
+          saveHeaders["Authorization"] = `Bearer ${saveToken}`;
+        }
+
+        const saveOrchResponse = await fetch(`${ORCHESTRATOR_URL}/api/jobs/${job_id}`, {
+          method: "GET",
+          headers: saveHeaders,
+          signal: AbortSignal.timeout(10000),
+        });
+
+        if (!saveOrchResponse.ok) {
+          return NextResponse.json(
+            { error: `Orchestrator returned ${saveOrchResponse.status}` },
+            { status: 502 }
+          );
+        }
+
+        const saveOrchData = await saveOrchResponse.json();
+
+        if (!saveOrchData.transcript) {
+          return NextResponse.json(
+            { error: "No transcript available from orchestrator" },
+            { status: 404 }
+          );
+        }
+
+        // Save the transcript
+        const cleanedTranscript = prepareTranscriptForCache(
+          saveOrchData.transcript as Record<string, unknown>
+        );
+
+        const saveUpsertData: Record<string, unknown> = {
+          youtube_id: saveJob.youtube_id,
+          transcript: cleanedTranscript,
+          cached_at: new Date().toISOString(),
+        };
+
+        if (saveOrchData.video?.storage_path || saveOrchData.storage_path) {
+          saveUpsertData.storage_path = saveOrchData.video?.storage_path || saveOrchData.storage_path;
+        }
+        if (saveOrchData.transcript?.title || saveOrchData.video?.title) {
+          saveUpsertData.title = saveOrchData.transcript?.title || saveOrchData.video?.title;
+        }
+        if (saveOrchData.video?.channel_name) {
+          saveUpsertData.channel_name = saveOrchData.video.channel_name;
+        }
+        if (saveOrchData.transcript?.duration) {
+          saveUpsertData.duration_seconds = Math.round(Number(saveOrchData.transcript.duration));
+        }
+        if (!saveUpsertData.thumbnail_url) {
+          saveUpsertData.thumbnail_url = `https://img.youtube.com/vi/${saveJob.youtube_id}/hqdefault.jpg`;
+        }
+
+        const { error: saveUpsertError } = await supabase
+          .from("videos")
+          .upsert(saveUpsertData, { onConflict: "youtube_id" });
+
+        if (saveUpsertError) {
+          console.error("Failed to save transcript:", saveUpsertError);
+          return NextResponse.json(
+            { error: `Failed to save transcript: ${saveUpsertError.message}` },
+            { status: 500 }
+          );
+        }
+
+        // Mark job as completed
+        await supabase
+          .from("filter_jobs")
+          .update({
+            status: "completed",
+            progress: 100,
+            completed_at: new Date().toISOString(),
+          })
+          .eq("job_id", job_id);
+
+        await logAdminAction(
+          admin.id,
+          "save_transcript",
+          "filter_jobs",
+          job_id,
+          { youtube_id: saveJob.youtube_id },
+          request
+        );
+
+        return NextResponse.json({
+          success: true,
+          transcript_saved: true,
         });
       }
 
