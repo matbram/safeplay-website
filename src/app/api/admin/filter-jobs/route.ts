@@ -78,10 +78,11 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // Check video records for all youtube_ids in this page (for resolved + download detection)
+    // Check video records for all youtube_ids in this page (for resolved + download + transcript detection)
     const pageYoutubeIds = [...new Set((jobs || []).map((j) => j.youtube_id))];
     let resolvedIds = new Set<string>();
     let downloadedIds = new Set<string>();
+    let transcriptIds = new Set<string>();
 
     if (pageYoutubeIds.length > 0) {
       const { data: videoRecords } = await supabase
@@ -91,7 +92,10 @@ export async function GET(request: NextRequest) {
 
       if (videoRecords) {
         videoRecords.forEach((v) => {
-          if (v.transcript) resolvedIds.add(v.youtube_id);
+          if (v.transcript) {
+            resolvedIds.add(v.youtube_id);
+            transcriptIds.add(v.youtube_id);
+          }
           if (v.storage_path) downloadedIds.add(v.youtube_id);
         });
       }
@@ -193,6 +197,7 @@ export async function GET(request: NextRequest) {
         resolved: job.status === "failed" && resolvedIds.has(job.youtube_id),
         stale: isStale,
         has_download: hasDownload,
+        has_transcript: transcriptIds.has(job.youtube_id),
       };
     });
 

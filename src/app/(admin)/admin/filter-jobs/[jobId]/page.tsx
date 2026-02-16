@@ -341,6 +341,21 @@ export default function FilterJobDetailPage() {
         </div>
       </div>
 
+      {/* Missing transcript warning */}
+      {job.status === "completed" && video && !video.has_transcript && (
+        <div className="flex items-center gap-3 p-4 rounded-lg bg-warning/10 border border-warning/20">
+          <AlertTriangle className="w-5 h-5 text-warning shrink-0" />
+          <div className="flex-1">
+            <p className="text-sm font-medium text-warning">
+              Job marked as completed but transcript is missing
+            </p>
+            <p className="text-xs text-warning/70 mt-0.5">
+              This job finished without saving a transcript. Use Retranscribe to re-process the existing download, or Retry to start from scratch.
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* Status + Actions Bar */}
       <Card>
         <CardContent className="pt-6">
@@ -402,7 +417,7 @@ export default function FilterJobDetailPage() {
 
             {/* Action Buttons */}
             <div className="flex items-center gap-2">
-              {(job.status === "failed" || job.stale) && (
+              {(job.status === "failed" || job.stale || (job.status === "completed" && video && !video.has_transcript)) && (
                 <Button
                   variant="outline"
                   size="sm"
@@ -417,7 +432,7 @@ export default function FilterJobDetailPage() {
                   Retry
                 </Button>
               )}
-              {(job.status === "failed" || job.stale) && job.has_download && (
+              {(job.status === "failed" || job.stale || (job.status === "completed" && video && !video.has_transcript)) && job.has_download && (
                 <Button
                   variant="outline"
                   size="sm"

@@ -60,6 +60,7 @@ interface FilterJob {
   resolved: boolean;
   stale: boolean;
   has_download: boolean;
+  has_transcript: boolean;
 }
 
 interface JobStats {
@@ -570,7 +571,7 @@ export default function FilterJobsPage() {
                               </Button>
 
                               {/* Retry - full reprocess */}
-                              {(job.status === "failed" || job.stale) && (
+                              {(job.status === "failed" || job.stale || (job.status === "completed" && !job.has_transcript)) && (
                                 <Button
                                   variant="ghost"
                                   size="icon"
@@ -588,7 +589,7 @@ export default function FilterJobsPage() {
                               )}
 
                               {/* Retranscribe - only if download file exists */}
-                              {(job.status === "failed" || job.stale) && job.has_download && (
+                              {(job.status === "failed" || job.stale || (job.status === "completed" && !job.has_transcript)) && job.has_download && (
                                 <Button
                                   variant="ghost"
                                   size="icon"
