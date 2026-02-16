@@ -1,4 +1,4 @@
-import { createServiceClient } from "@/lib/supabase/server";
+import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdmin, logAdminAction } from "@/lib/admin-auth";
 
@@ -8,6 +8,19 @@ const ORCHESTRATOR_URL =
 
 // Jobs processing/pending for longer than this are considered stale
 const STALE_THRESHOLD_MS = 30 * 60 * 1000; // 30 minutes
+
+/**
+ * Get the current admin's access token for orchestrator calls
+ */
+async function getAdminAccessToken(): Promise<string | null> {
+  try {
+    const supabase = await createClient();
+    const { data: { session } } = await supabase.auth.getSession();
+    return session?.access_token || null;
+  } catch {
+    return null;
+  }
+}
 
 /**
  * GET /api/admin/filter-jobs
@@ -427,10 +440,19 @@ export async function POST(request: NextRequest) {
             .eq("job_id", job_id);
         }
 
+        // Get admin's access token for orchestrator auth
+        const accessToken = await getAdminAccessToken();
+        const orchHeaders: Record<string, string> = {
+          "Content-Type": "application/json",
+        };
+        if (accessToken) {
+          orchHeaders["Authorization"] = `Bearer ${accessToken}`;
+        }
+
         // Call the orchestrator to start fresh
         const orchResponse = await fetch(`${ORCHESTRATOR_URL}/api/filter`, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: orchHeaders,
           body: JSON.stringify({ youtube_id: targetYoutubeId }),
         });
 
@@ -522,10 +544,19 @@ export async function POST(request: NextRequest) {
             .eq("job_id", job_id);
         }
 
+        // Get admin's access token for orchestrator auth
+        const retranscribeToken = await getAdminAccessToken();
+        const retranscribeHeaders: Record<string, string> = {
+          "Content-Type": "application/json",
+        };
+        if (retranscribeToken) {
+          retranscribeHeaders["Authorization"] = `Bearer ${retranscribeToken}`;
+        }
+
         // Call orchestrator - it will see the file exists and skip download
         const orchResponse = await fetch(`${ORCHESTRATOR_URL}/api/filter`, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: retranscribeHeaders,
           body: JSON.stringify({ youtube_id: targetYoutubeId }),
         });
 
