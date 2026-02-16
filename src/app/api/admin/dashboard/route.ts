@@ -20,6 +20,10 @@ export async function GET() {
       revenueResult,
       recentUsersResult,
       recentTicketsResult,
+      // Filter job stats
+      failedJobsResult,
+      processingJobsResult,
+      recentFailedJobsResult,
     ] = await Promise.all([
       // Total users
       supabase.from("profiles").select("id", { count: "exact", head: true }),
@@ -78,6 +82,26 @@ export async function GET() {
         .select("id, subject, status, priority, created_at, email")
         .order("created_at", { ascending: false })
         .limit(5),
+
+      // Failed filter jobs count
+      supabase
+        .from("filter_jobs")
+        .select("id", { count: "exact", head: true })
+        .eq("status", "failed"),
+
+      // Currently processing filter jobs count
+      supabase
+        .from("filter_jobs")
+        .select("id", { count: "exact", head: true })
+        .in("status", ["processing", "pending"]),
+
+      // Recent failed jobs (for notifications)
+      supabase
+        .from("filter_jobs")
+        .select("job_id, youtube_id, error, created_at, user_id")
+        .eq("status", "failed")
+        .order("created_at", { ascending: false })
+        .limit(5),
     ]);
 
     // Calculate total credits used
@@ -101,6 +125,37 @@ export async function GET() {
       subscription_tier: user.subscription_tier || "free",
     })) || [];
 
+    // Enrich recent failed jobs with user emails
+    const failedJobs = recentFailedJobsResult.data || [];
+    let recentFailedJobs: Array<{
+      job_id: string;
+      youtube_id: string;
+      error: string | null;
+      created_at: string;
+      user_email: string;
+    }> = [];
+
+    if (failedJobs.length > 0) {
+      const userIds = [...new Set(failedJobs.map((j) => j.user_id))];
+      const { data: profiles } = await supabase
+        .from("profiles")
+        .select("id, email")
+        .in("id", userIds);
+
+      const emailMap: Record<string, string> = {};
+      profiles?.forEach((p) => {
+        emailMap[p.id] = p.email || "Unknown";
+      });
+
+      recentFailedJobs = failedJobs.map((j) => ({
+        job_id: j.job_id,
+        youtube_id: j.youtube_id,
+        error: j.error,
+        created_at: j.created_at,
+        user_email: emailMap[j.user_id] || "Unknown",
+      }));
+    }
+
     return NextResponse.json({
       stats: {
         total_users: usersResult.count || 0,
@@ -110,9 +165,12 @@ export async function GET() {
         new_users_today: newUsersToday.count || 0,
         new_users_week: newUsersWeek.count || 0,
         revenue_this_month: revenueThisMonth,
+        failed_jobs: failedJobsResult.count || 0,
+        processing_jobs: processingJobsResult.count || 0,
       },
       recentUsers,
       recentTickets: recentTicketsResult.data || [],
+      recentFailedJobs,
     });
   } catch (error) {
     console.error("Admin dashboard error:", error);

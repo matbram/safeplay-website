@@ -13,6 +13,9 @@ import {
   UserPlus,
   DollarSign,
   Activity,
+  Video,
+  AlertTriangle,
+  ExternalLink,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -30,6 +33,16 @@ interface DashboardStats {
   new_users_today: number;
   new_users_week: number;
   revenue_this_month: number;
+  failed_jobs: number;
+  processing_jobs: number;
+}
+
+interface FailedJob {
+  job_id: string;
+  youtube_id: string;
+  error: string | null;
+  created_at: string;
+  user_email: string;
 }
 
 interface RecentUser {
@@ -68,6 +81,7 @@ export default function AdminDashboardPage() {
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [recentUsers, setRecentUsers] = useState<RecentUser[]>([]);
   const [recentTickets, setRecentTickets] = useState<RecentTicket[]>([]);
+  const [recentFailedJobs, setRecentFailedJobs] = useState<FailedJob[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -83,6 +97,7 @@ export default function AdminDashboardPage() {
         setStats(data.stats);
         setRecentUsers(data.recentUsers || []);
         setRecentTickets(data.recentTickets || []);
+        setRecentFailedJobs(data.recentFailedJobs || []);
       }
     } catch (error) {
       console.error("Failed to fetch dashboard data:", error);
@@ -136,8 +151,28 @@ export default function AdminDashboardPage() {
         />
       </StatCardGrid>
 
+      {/* Failed Jobs Alert Banner */}
+      {!loading && stats && stats.failed_jobs > 0 && (
+        <div className="flex items-center gap-3 p-4 rounded-lg bg-error/10 border border-error/20">
+          <AlertTriangle className="w-5 h-5 text-error shrink-0" />
+          <div className="flex-1">
+            <p className="text-sm font-medium text-error">
+              {stats.failed_jobs} failed filter job{stats.failed_jobs !== 1 && "s"} need attention
+            </p>
+            <p className="text-xs text-error/70 mt-0.5">
+              Users experienced errors during video filtering
+            </p>
+          </div>
+          <Button asChild variant="outline" size="sm" className="border-error/30 text-error hover:bg-error/10">
+            <Link href="/admin/filter-jobs?status=failed">
+              View Failed Jobs
+            </Link>
+          </Button>
+        </div>
+      )}
+
       {/* Secondary Stats */}
-      <StatCardGrid columns={3}>
+      <StatCardGrid columns={4}>
         <StatCard
           title="New Users This Week"
           value={stats?.new_users_week?.toLocaleString() || "0"}
@@ -150,6 +185,23 @@ export default function AdminDashboardPage() {
           icon={DollarSign}
           loading={loading}
           valueClassName="text-success"
+        />
+        <StatCard
+          title="Filter Pipeline"
+          value={
+            stats?.failed_jobs && stats.failed_jobs > 0
+              ? `${stats.failed_jobs} Failed`
+              : stats?.processing_jobs && stats.processing_jobs > 0
+              ? `${stats.processing_jobs} Active`
+              : "Healthy"
+          }
+          icon={Video}
+          loading={loading}
+          valueClassName={
+            stats?.failed_jobs && stats.failed_jobs > 0
+              ? "text-error"
+              : "text-success"
+          }
         />
         <StatCard
           title="System Status"
@@ -167,7 +219,7 @@ export default function AdminDashboardPage() {
           <CardDescription>Common admin tasks</CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
             <Button asChild variant="outline" className="h-auto py-4 flex-col gap-2">
               <Link href="/admin/users">
                 <Users className="w-5 h-5" />
@@ -192,9 +244,72 @@ export default function AdminDashboardPage() {
                 <span>Subscriptions</span>
               </Link>
             </Button>
+            <Button asChild variant="outline" className="h-auto py-4 flex-col gap-2">
+              <Link href="/admin/filter-jobs">
+                <Video className="w-5 h-5" />
+                <span>Filter Jobs</span>
+              </Link>
+            </Button>
           </div>
         </CardContent>
       </Card>
+
+      {/* Recent Failed Jobs */}
+      {recentFailedJobs.length > 0 && (
+        <Card className="border-error/20">
+          <CardHeader className="flex flex-row items-center justify-between">
+            <div>
+              <CardTitle className="text-lg flex items-center gap-2">
+                <AlertTriangle className="w-5 h-5 text-error" />
+                Recent Failed Jobs
+              </CardTitle>
+              <CardDescription>Jobs that need attention</CardDescription>
+            </div>
+            <Button asChild variant="ghost" size="sm">
+              <Link href="/admin/filter-jobs?status=failed">
+                View all <ArrowRight className="w-4 h-4 ml-1" />
+              </Link>
+            </Button>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-3">
+              {recentFailedJobs.map((job) => (
+                <Link
+                  key={job.job_id}
+                  href="/admin/filter-jobs?status=failed"
+                  className="flex items-center gap-3 p-3 rounded-lg border border-error/10 hover:border-error/30 hover:bg-error/5 transition-colors"
+                >
+                  <img
+                    src={`https://img.youtube.com/vi/${job.youtube_id}/default.jpg`}
+                    alt=""
+                    className="w-16 h-12 rounded object-cover bg-muted shrink-0"
+                  />
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <a
+                        href={`https://youtube.com/watch?v=${job.youtube_id}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-sm font-medium hover:text-primary flex items-center gap-1"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        {job.youtube_id}
+                        <ExternalLink className="w-3 h-3" />
+                      </a>
+                    </div>
+                    <p className="text-xs text-error truncate">
+                      {job.error || "Unknown error"}
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      {job.user_email} &middot; {formatDate(new Date(job.created_at))}
+                    </p>
+                  </div>
+                </Link>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Recent Activity Grid */}
       <div className="grid gap-6 lg:grid-cols-2">
