@@ -115,7 +115,11 @@ export async function GET(
       now - new Date(job.created_at).getTime() > STALE_THRESHOLD_MS;
 
     // Try to get live status from orchestrator (non-blocking, with timeout)
+    // Sync status back to local DB if it changed
     let orchestratorStatus = null;
+    let liveStatus = job.status;
+    let liveProgress = job.progress;
+    let liveError = job.error;
     try {
       const orchResponse = await fetch(`${ORCHESTRATOR_URL}/api/jobs/${jobId}`, {
         method: "GET",
@@ -123,9 +127,57 @@ export async function GET(
       });
       if (orchResponse.ok) {
         orchestratorStatus = await orchResponse.json();
+
+        // Map orchestrator progress to display progress (same as filter status route)
+        if (orchestratorStatus.status) {
+          liveStatus = orchestratorStatus.status;
+          switch (orchestratorStatus.status) {
+            case "pending":
+              liveProgress = 5;
+              break;
+            case "downloading":
+              liveProgress = 5 + Math.round((orchestratorStatus.progress || 0) * 0.30);
+              break;
+            case "transcribing":
+              liveProgress = 35 + Math.round((orchestratorStatus.progress || 0) * 0.60);
+              break;
+            case "completed":
+              liveProgress = 100;
+              break;
+            case "failed":
+              liveError = orchestratorStatus.error || job.error;
+              break;
+          }
+
+          // Update local DB if status changed
+          if (liveStatus !== job.status || liveProgress !== job.progress) {
+            const updateData: Record<string, unknown> = {
+              status: liveStatus,
+              progress: liveProgress,
+            };
+            if (liveStatus === "failed" && orchestratorStatus.error) {
+              updateData.error = orchestratorStatus.error;
+            }
+            if (liveStatus === "completed") {
+              updateData.completed_at = new Date().toISOString();
+            }
+            await supabase
+              .from("filter_jobs")
+              .update(updateData)
+              .eq("job_id", jobId);
+          }
+        }
       }
     } catch {
-      // Orchestrator unreachable - that's ok
+      // Orchestrator unreachable - that's ok, use local data
+    }
+
+    // Re-check download status if orchestrator reports it
+    if (orchestratorStatus?.storage_path) {
+      hasDownload = true;
+    }
+    if (liveStatus === "transcribing" || liveStatus === "completed" || liveProgress > 35) {
+      hasDownload = true;
     }
 
     // Get related jobs for the same video (other attempts)
@@ -140,6 +192,9 @@ export async function GET(
     return NextResponse.json({
       job: {
         ...job,
+        status: liveStatus,
+        progress: liveProgress,
+        error: liveError,
         user_email: profile?.email || profile?.display_name || "Unknown",
         user_display_name: profile?.display_name || null,
         resolved,

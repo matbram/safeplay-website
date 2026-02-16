@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import {
   ArrowLeft,
@@ -140,39 +140,82 @@ export default function FilterJobDetailPage() {
     useState<OrchestratorStatus | null>(null);
   const [relatedJobs, setRelatedJobs] = useState<RelatedJob[]>([]);
   const [loading, setLoading] = useState(true);
+  const [polling, setPolling] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const pollingRef = useRef<NodeJS.Timeout | null>(null);
 
   // Modal state
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [retryOpen, setRetryOpen] = useState(false);
   const [retranscribeOpen, setRetranscribeOpen] = useState(false);
 
-  const fetchJobDetail = async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      const response = await fetch(`/api/admin/filter-jobs/${jobId}`);
-      if (!response.ok) {
-        const data = await response.json();
-        setError(data.error || "Failed to load job");
-        return;
-      }
-      const data = await response.json();
-      setJob(data.job);
-      setVideo(data.video);
-      setOrchestratorStatus(data.orchestrator_status);
-      setRelatedJobs(data.related_jobs || []);
-    } catch {
-      setError("Failed to fetch job details");
-    } finally {
-      setLoading(false);
-    }
-  };
+  const ACTIVE_STATUSES = ["pending", "processing", "downloading", "transcribing"];
 
+  const isActiveJob = useCallback(
+    (status?: string) => ACTIVE_STATUSES.includes(status || ""),
+    []
+  );
+
+  const fetchJobDetail = useCallback(
+    async (isPolling = false) => {
+      try {
+        if (!isPolling) {
+          setLoading(true);
+          setError(null);
+        }
+        const response = await fetch(`/api/admin/filter-jobs/${jobId}`);
+        if (!response.ok) {
+          const data = await response.json();
+          if (!isPolling) setError(data.error || "Failed to load job");
+          return;
+        }
+        const data = await response.json();
+        setJob(data.job);
+        setVideo(data.video);
+        setOrchestratorStatus(data.orchestrator_status);
+        setRelatedJobs(data.related_jobs || []);
+
+        // Start or stop polling based on job status
+        if (isActiveJob(data.job?.status)) {
+          setPolling(true);
+        } else {
+          setPolling(false);
+        }
+      } catch {
+        if (!isPolling) setError("Failed to fetch job details");
+      } finally {
+        if (!isPolling) setLoading(false);
+      }
+    },
+    [jobId, isActiveJob]
+  );
+
+  // Initial fetch
   useEffect(() => {
     if (jobId) fetchJobDetail();
-  }, [jobId]);
+  }, [jobId, fetchJobDetail]);
+
+  // Auto-poll every 3 seconds while job is active
+  useEffect(() => {
+    if (polling) {
+      pollingRef.current = setInterval(() => {
+        fetchJobDetail(true);
+      }, 3000);
+    } else {
+      if (pollingRef.current) {
+        clearInterval(pollingRef.current);
+        pollingRef.current = null;
+      }
+    }
+
+    return () => {
+      if (pollingRef.current) {
+        clearInterval(pollingRef.current);
+        pollingRef.current = null;
+      }
+    };
+  }, [polling, fetchJobDetail]);
 
   const handleAction = async (action: string, onDone?: () => void) => {
     if (!job) return;
@@ -189,10 +232,16 @@ export default function FilterJobDetailPage() {
       });
 
       if (response.ok) {
+        const result = await response.json();
         onDone?.();
         if (action === "delete") {
           router.push("/admin/filter-jobs");
+        } else if (result.job_id && result.job_id !== job.job_id) {
+          // Orchestrator returned a new job_id - navigate to it
+          router.replace(`/admin/filter-jobs/${result.job_id}`);
         } else {
+          // Same job_id, start polling
+          setPolling(true);
           fetchJobDetail();
         }
       } else {
@@ -269,8 +318,17 @@ export default function FilterJobDetailPage() {
           </div>
         </div>
         <div className="flex items-center gap-2">
+          {polling && (
+            <div className="flex items-center gap-1.5 text-xs text-success mr-2">
+              <span className="relative flex h-2 w-2">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-success opacity-75" />
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-success" />
+              </span>
+              Live
+            </div>
+          )}
           <Button
-            onClick={fetchJobDetail}
+            onClick={() => fetchJobDetail()}
             variant="outline"
             size="sm"
             disabled={loading}
@@ -300,7 +358,7 @@ export default function FilterJobDetailPage() {
                 <StatusIcon
                   className={cn(
                     "w-4 h-4 mr-1.5",
-                    job.status === "processing" && "animate-spin"
+                    isActiveJob(job.status) && "animate-spin"
                   )}
                 />
                 {config.label}
@@ -384,17 +442,21 @@ export default function FilterJobDetailPage() {
           </div>
 
           {/* Progress bar for active jobs */}
-          {job.progress > 0 && job.progress < 100 && job.status !== "failed" && (
+          {isActiveJob(job.status) && (
             <div className="mt-4">
               <div className="flex items-center justify-between mb-1">
-                <span className="text-xs text-muted-foreground">
-                  Progress
+                <span className="text-sm text-muted-foreground flex items-center gap-2">
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  {job.status === "pending" && "Preparing video..."}
+                  {job.status === "downloading" && "Downloading video..."}
+                  {job.status === "transcribing" && "Analyzing audio..."}
+                  {job.status === "processing" && "Processing..."}
                 </span>
                 <span className="text-xs font-medium">{job.progress}%</span>
               </div>
               <div className="w-full h-2 bg-muted rounded-full overflow-hidden">
                 <div
-                  className="h-full bg-primary rounded-full transition-all"
+                  className="h-full bg-primary rounded-full transition-all duration-500"
                   style={{ width: `${job.progress}%` }}
                 />
               </div>
