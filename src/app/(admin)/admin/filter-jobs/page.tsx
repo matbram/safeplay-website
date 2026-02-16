@@ -56,6 +56,7 @@ interface FilterJob {
   created_at: string;
   completed_at: string | null;
   resolved: boolean;
+  stale: boolean;
 }
 
 interface JobStats {
@@ -64,6 +65,7 @@ interface JobStats {
   failed_unresolved: number;
   failed_resolved: number;
   processing: number;
+  stale: number;
   completed: number;
 }
 
@@ -112,9 +114,11 @@ export default function FilterJobsPage() {
     failed_unresolved: 0,
     failed_resolved: 0,
     processing: 0,
+    stale: 0,
     completed: 0,
   });
   const [cleaningUp, setCleaningUp] = useState(false);
+  const [markingStale, setMarkingStale] = useState(false);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState("");
@@ -185,6 +189,28 @@ export default function FilterJobsPage() {
       alert("Action failed. Check console for details.");
     } finally {
       setActionLoading(null);
+    }
+  };
+
+  const handleMarkStale = async () => {
+    setMarkingStale(true);
+    try {
+      const response = await fetch("/api/admin/filter-jobs", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "mark_stale_failed" }),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        if (data.marked > 0) {
+          fetchJobs();
+        }
+      }
+    } catch (error) {
+      console.error("Mark stale failed:", error);
+    } finally {
+      setMarkingStale(false);
     }
   };
 
@@ -265,6 +291,35 @@ export default function FilterJobsPage() {
               <Sparkles className="w-4 h-4 mr-1" />
             )}
             Clean Up Resolved
+          </Button>
+        </div>
+      )}
+
+      {/* Stale jobs banner */}
+      {stats.stale > 0 && (
+        <div className="flex items-center gap-3 p-4 rounded-lg bg-warning/10 border border-warning/20">
+          <AlertTriangle className="w-5 h-5 text-warning shrink-0" />
+          <div className="flex-1">
+            <p className="text-sm font-medium text-warning">
+              {stats.stale} stuck job{stats.stale !== 1 && "s"} still showing as &quot;processing&quot;
+            </p>
+            <p className="text-xs text-warning/70 mt-0.5">
+              These jobs have been processing for over 30 minutes and are likely stuck
+            </p>
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            className="border-warning/30 text-warning hover:bg-warning/10"
+            onClick={handleMarkStale}
+            disabled={markingStale}
+          >
+            {markingStale ? (
+              <Loader2 className="w-4 h-4 animate-spin mr-1" />
+            ) : (
+              <X className="w-4 h-4 mr-1" />
+            )}
+            Mark as Failed
           </Button>
         </div>
       )}
@@ -462,6 +517,15 @@ export default function FilterJobsPage() {
                                   Resolved
                                 </Badge>
                               )}
+                              {job.stale && (
+                                <Badge
+                                  variant="outline"
+                                  className="text-xs w-fit bg-warning/10 text-warning border-warning/20"
+                                >
+                                  <AlertTriangle className="w-3 h-3 mr-1" />
+                                  Stuck
+                                </Badge>
+                              )}
                               {job.progress > 0 &&
                                 job.progress < 100 &&
                                 job.status !== "failed" && (
@@ -494,7 +558,7 @@ export default function FilterJobsPage() {
                           <td className="px-4 py-3 text-right">
                             <div className="flex items-center justify-end gap-1">
                               {/* Retry - full reprocess */}
-                              {job.status === "failed" && (
+                              {(job.status === "failed" || job.stale) && (
                                 <Button
                                   variant="ghost"
                                   size="icon"
@@ -512,7 +576,7 @@ export default function FilterJobsPage() {
                               )}
 
                               {/* Retranscribe - skip download */}
-                              {job.status === "failed" && (
+                              {(job.status === "failed" || job.stale) && (
                                 <Button
                                   variant="ghost"
                                   size="icon"

@@ -6,6 +6,9 @@ const ORCHESTRATOR_URL =
   process.env.ORCHESTRATION_API_URL ||
   "https://safeplay-orchestrator-80308222868.us-central1.run.app";
 
+// Jobs processing/pending for longer than this are considered stale
+const STALE_THRESHOLD_MS = 30 * 60 * 1000; // 30 minutes
+
 /**
  * GET /api/admin/filter-jobs
  * List all filter jobs with filtering, search, pagination.
@@ -149,11 +152,23 @@ export async function GET(request: NextRequest) {
     ).length;
     const resolvedCount = allFailedJobs.length - unresolvedCount;
 
-    const enrichedJobs = (jobs || []).map((job) => ({
-      ...job,
-      user_email: userMap[job.user_id] || "Unknown",
-      resolved: job.status === "failed" && resolvedIds.has(job.youtube_id),
-    }));
+    const now = Date.now();
+    const enrichedJobs = (jobs || []).map((job) => {
+      const isStale =
+        ["processing", "pending", "downloading", "transcribing"].includes(
+          job.status
+        ) &&
+        now - new Date(job.created_at).getTime() > STALE_THRESHOLD_MS;
+
+      return {
+        ...job,
+        user_email: userMap[job.user_id] || "Unknown",
+        resolved: job.status === "failed" && resolvedIds.has(job.youtube_id),
+        stale: isStale,
+      };
+    });
+
+    const staleCount = enrichedJobs.filter((j) => j.stale).length;
 
     return NextResponse.json({
       jobs: enrichedJobs,
@@ -164,6 +179,7 @@ export async function GET(request: NextRequest) {
         failed_unresolved: unresolvedCount,
         failed_resolved: resolvedCount,
         processing: processingResult.count || 0,
+        stale: staleCount,
         completed: completedResult.count || 0,
       },
     });
@@ -197,6 +213,51 @@ export async function POST(request: NextRequest) {
     }
 
     switch (action) {
+      case "mark_stale_failed": {
+        // Find all processing/pending jobs older than the threshold
+        const staleThreshold = new Date(
+          Date.now() - STALE_THRESHOLD_MS
+        ).toISOString();
+
+        const { data: staleJobs } = await supabase
+          .from("filter_jobs")
+          .select("id, job_id, youtube_id")
+          .in("status", ["processing", "pending", "downloading", "transcribing"])
+          .lt("created_at", staleThreshold);
+
+        if (!staleJobs || staleJobs.length === 0) {
+          return NextResponse.json({ success: true, marked: 0 });
+        }
+
+        await supabase
+          .from("filter_jobs")
+          .update({
+            status: "failed",
+            error: "Marked as failed by admin (stale/stuck job)",
+          })
+          .in(
+            "id",
+            staleJobs.map((j) => j.id)
+          );
+
+        await logAdminAction(
+          admin.id,
+          "mark_stale_failed",
+          "filter_jobs",
+          "batch",
+          {
+            marked: staleJobs.length,
+            job_ids: staleJobs.map((j) => j.job_id),
+          },
+          request
+        );
+
+        return NextResponse.json({
+          success: true,
+          marked: staleJobs.length,
+        });
+      }
+
       case "cleanup_resolved": {
         // Find all failed jobs
         const { data: failedJobs } = await supabase
