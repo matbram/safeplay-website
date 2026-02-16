@@ -11,11 +11,13 @@ import {
   AlertTriangle,
   Loader2,
   Check,
+  CheckCircle,
   X,
   Clock,
   ExternalLink,
   ChevronLeft,
   ChevronRight,
+  Sparkles,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -53,11 +55,14 @@ interface FilterJob {
   error: string | null;
   created_at: string;
   completed_at: string | null;
+  resolved: boolean;
 }
 
 interface JobStats {
   total: number;
   failed: number;
+  failed_unresolved: number;
+  failed_resolved: number;
   processing: number;
   completed: number;
 }
@@ -104,9 +109,12 @@ export default function FilterJobsPage() {
   const [stats, setStats] = useState<JobStats>({
     total: 0,
     failed: 0,
+    failed_unresolved: 0,
+    failed_resolved: 0,
     processing: 0,
     completed: 0,
   });
+  const [cleaningUp, setCleaningUp] = useState(false);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState("");
@@ -180,6 +188,28 @@ export default function FilterJobsPage() {
     }
   };
 
+  const handleCleanup = async () => {
+    setCleaningUp(true);
+    try {
+      const response = await fetch("/api/admin/filter-jobs", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "cleanup_resolved" }),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        if (data.cleaned > 0) {
+          fetchJobs();
+        }
+      }
+    } catch (error) {
+      console.error("Cleanup failed:", error);
+    } finally {
+      setCleaningUp(false);
+    }
+  };
+
   if (!hasPermission("manage_users")) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[400px] gap-4">
@@ -210,6 +240,35 @@ export default function FilterJobsPage() {
         </Button>
       </div>
 
+      {/* Resolved banner */}
+      {stats.failed_resolved > 0 && (
+        <div className="flex items-center gap-3 p-4 rounded-lg bg-success/10 border border-success/20">
+          <CheckCircle className="w-5 h-5 text-success shrink-0" />
+          <div className="flex-1">
+            <p className="text-sm font-medium text-success">
+              {stats.failed_resolved} failed job{stats.failed_resolved !== 1 && "s"} have since been resolved
+            </p>
+            <p className="text-xs text-success/70 mt-0.5">
+              The video was successfully processed on a later attempt
+            </p>
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            className="border-success/30 text-success hover:bg-success/10"
+            onClick={handleCleanup}
+            disabled={cleaningUp}
+          >
+            {cleaningUp ? (
+              <Loader2 className="w-4 h-4 animate-spin mr-1" />
+            ) : (
+              <Sparkles className="w-4 h-4 mr-1" />
+            )}
+            Clean Up Resolved
+          </Button>
+        </div>
+      )}
+
       {/* Stats */}
       <StatCardGrid columns={4}>
         <StatCard
@@ -234,10 +293,19 @@ export default function FilterJobsPage() {
         />
         <StatCard
           title="Failed"
-          value={stats.failed.toLocaleString()}
+          value={
+            stats.failed_unresolved > 0
+              ? `${stats.failed_unresolved} unresolved`
+              : stats.failed.toLocaleString()
+          }
           icon={AlertTriangle}
           loading={loading}
-          valueClassName={stats.failed > 0 ? "text-error" : ""}
+          description={
+            stats.failed_resolved > 0
+              ? `${stats.failed_resolved} resolved`
+              : undefined
+          }
+          valueClassName={stats.failed_unresolved > 0 ? "text-error" : ""}
         />
       </StatCardGrid>
 
@@ -367,25 +435,41 @@ export default function FilterJobsPage() {
 
                           {/* Status */}
                           <td className="px-4 py-3">
-                            <Badge
-                              variant="outline"
-                              className={cn("text-xs", config.className)}
-                            >
-                              <StatusIcon
+                            <div className="flex flex-col gap-1">
+                              <Badge
+                                variant="outline"
                                 className={cn(
-                                  "w-3 h-3 mr-1",
-                                  job.status === "processing" && "animate-spin"
+                                  "text-xs w-fit",
+                                  job.resolved
+                                    ? "bg-success/10 text-success border-success/20 line-through opacity-60"
+                                    : config.className
                                 )}
-                              />
-                              {config.label}
-                            </Badge>
-                            {job.progress > 0 &&
-                              job.progress < 100 &&
-                              job.status !== "failed" && (
-                                <p className="text-xs text-muted-foreground mt-1">
-                                  {job.progress}%
-                                </p>
+                              >
+                                <StatusIcon
+                                  className={cn(
+                                    "w-3 h-3 mr-1",
+                                    job.status === "processing" && "animate-spin"
+                                  )}
+                                />
+                                {config.label}
+                              </Badge>
+                              {job.resolved && (
+                                <Badge
+                                  variant="outline"
+                                  className="text-xs w-fit bg-success/10 text-success border-success/20"
+                                >
+                                  <CheckCircle className="w-3 h-3 mr-1" />
+                                  Resolved
+                                </Badge>
                               )}
+                              {job.progress > 0 &&
+                                job.progress < 100 &&
+                                job.status !== "failed" && (
+                                  <p className="text-xs text-muted-foreground">
+                                    {job.progress}%
+                                  </p>
+                                )}
+                            </div>
                           </td>
 
                           {/* Error */}

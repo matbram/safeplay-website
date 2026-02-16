@@ -8,7 +8,9 @@ const ORCHESTRATOR_URL =
 
 /**
  * GET /api/admin/filter-jobs
- * List all filter jobs with filtering, search, pagination
+ * List all filter jobs with filtering, search, pagination.
+ * Cross-references failed jobs against the videos table to detect
+ * which failures have since been resolved (video now has a transcript).
  */
 export async function GET(request: NextRequest) {
   try {
@@ -60,15 +62,50 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // Get stats
-    const [totalResult, failedResult, processingResult, completedResult] =
+    // Check which failed jobs have been resolved (video now cached with transcript)
+    const failedYoutubeIds = [
+      ...new Set(
+        (jobs || [])
+          .filter((j) => j.status === "failed")
+          .map((j) => j.youtube_id)
+      ),
+    ];
+
+    let resolvedIds = new Set<string>();
+    if (failedYoutubeIds.length > 0) {
+      const { data: cachedVideos } = await supabase
+        .from("videos")
+        .select("youtube_id")
+        .in("youtube_id", failedYoutubeIds)
+        .not("transcript", "is", null);
+
+      if (cachedVideos) {
+        resolvedIds = new Set(cachedVideos.map((v) => v.youtube_id));
+      }
+    }
+
+    // Also check if a later job for the same youtube_id succeeded
+    if (failedYoutubeIds.length > 0) {
+      const { data: completedJobs } = await supabase
+        .from("filter_jobs")
+        .select("youtube_id")
+        .in("youtube_id", failedYoutubeIds)
+        .eq("status", "completed");
+
+      if (completedJobs) {
+        completedJobs.forEach((j) => resolvedIds.add(j.youtube_id));
+      }
+    }
+
+    // Get stats — count unresolved failures separately
+    const [totalResult, allFailedResult, processingResult, completedResult] =
       await Promise.all([
         supabase
           .from("filter_jobs")
           .select("id", { count: "exact", head: true }),
         supabase
           .from("filter_jobs")
-          .select("id", { count: "exact", head: true })
+          .select("id, youtube_id")
           .eq("status", "failed"),
         supabase
           .from("filter_jobs")
@@ -80,9 +117,42 @@ export async function GET(request: NextRequest) {
           .eq("status", "completed"),
       ]);
 
+    // For unresolved count, check all failed youtube_ids against videos + completed jobs
+    const allFailedJobs = allFailedResult.data || [];
+    const allFailedYoutubeIds = [
+      ...new Set(allFailedJobs.map((j) => j.youtube_id)),
+    ];
+
+    let allResolvedIds = new Set<string>();
+    if (allFailedYoutubeIds.length > 0) {
+      const [cachedResult, completedJobsResult] = await Promise.all([
+        supabase
+          .from("videos")
+          .select("youtube_id")
+          .in("youtube_id", allFailedYoutubeIds)
+          .not("transcript", "is", null),
+        supabase
+          .from("filter_jobs")
+          .select("youtube_id")
+          .in("youtube_id", allFailedYoutubeIds)
+          .eq("status", "completed"),
+      ]);
+
+      cachedResult.data?.forEach((v) => allResolvedIds.add(v.youtube_id));
+      completedJobsResult.data?.forEach((j) =>
+        allResolvedIds.add(j.youtube_id)
+      );
+    }
+
+    const unresolvedCount = allFailedJobs.filter(
+      (j) => !allResolvedIds.has(j.youtube_id)
+    ).length;
+    const resolvedCount = allFailedJobs.length - unresolvedCount;
+
     const enrichedJobs = (jobs || []).map((job) => ({
       ...job,
       user_email: userMap[job.user_id] || "Unknown",
+      resolved: job.status === "failed" && resolvedIds.has(job.youtube_id),
     }));
 
     return NextResponse.json({
@@ -90,7 +160,9 @@ export async function GET(request: NextRequest) {
       total: count || 0,
       stats: {
         total: totalResult.count || 0,
-        failed: failedResult.count || 0,
+        failed: allFailedJobs.length,
+        failed_unresolved: unresolvedCount,
+        failed_resolved: resolvedCount,
         processing: processingResult.count || 0,
         completed: completedResult.count || 0,
       },
@@ -106,7 +178,7 @@ export async function GET(request: NextRequest) {
 
 /**
  * POST /api/admin/filter-jobs
- * Admin actions: retry, delete, retranscribe
+ * Admin actions: retry, delete, retranscribe, cleanup_resolved
  */
 export async function POST(request: NextRequest) {
   try {
@@ -125,6 +197,69 @@ export async function POST(request: NextRequest) {
     }
 
     switch (action) {
+      case "cleanup_resolved": {
+        // Find all failed jobs
+        const { data: failedJobs } = await supabase
+          .from("filter_jobs")
+          .select("id, job_id, youtube_id")
+          .eq("status", "failed");
+
+        if (!failedJobs || failedJobs.length === 0) {
+          return NextResponse.json({ success: true, cleaned: 0 });
+        }
+
+        const failedYoutubeIds = [
+          ...new Set(failedJobs.map((j) => j.youtube_id)),
+        ];
+
+        // Find which youtube_ids now have cached transcripts or completed jobs
+        const [cachedResult, completedResult] = await Promise.all([
+          supabase
+            .from("videos")
+            .select("youtube_id")
+            .in("youtube_id", failedYoutubeIds)
+            .not("transcript", "is", null),
+          supabase
+            .from("filter_jobs")
+            .select("youtube_id")
+            .in("youtube_id", failedYoutubeIds)
+            .eq("status", "completed"),
+        ]);
+
+        const resolvedIds = new Set<string>();
+        cachedResult.data?.forEach((v) => resolvedIds.add(v.youtube_id));
+        completedResult.data?.forEach((j) => resolvedIds.add(j.youtube_id));
+
+        // Delete the resolved failed job records
+        const toDelete = failedJobs.filter((j) =>
+          resolvedIds.has(j.youtube_id)
+        );
+
+        if (toDelete.length > 0) {
+          await supabase
+            .from("filter_jobs")
+            .delete()
+            .in(
+              "id",
+              toDelete.map((j) => j.id)
+            );
+        }
+
+        await logAdminAction(
+          admin.id,
+          "cleanup_resolved_jobs",
+          "filter_jobs",
+          "batch",
+          { cleaned: toDelete.length, total_failed: failedJobs.length },
+          request
+        );
+
+        return NextResponse.json({
+          success: true,
+          cleaned: toDelete.length,
+        });
+      }
+
       case "delete": {
         if (!job_id) {
           return NextResponse.json(

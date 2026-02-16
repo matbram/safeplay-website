@@ -83,11 +83,12 @@ export async function GET() {
         .order("created_at", { ascending: false })
         .limit(5),
 
-      // Failed filter jobs count
+      // All failed filter jobs (need youtube_id to check resolved)
       supabase
         .from("filter_jobs")
-        .select("id", { count: "exact", head: true })
-        .eq("status", "failed"),
+        .select("id, youtube_id, job_id, error, created_at, user_id")
+        .eq("status", "failed")
+        .order("created_at", { ascending: false }),
 
       // Currently processing filter jobs count
       supabase
@@ -95,13 +96,8 @@ export async function GET() {
         .select("id", { count: "exact", head: true })
         .in("status", ["processing", "pending"]),
 
-      // Recent failed jobs (for notifications)
-      supabase
-        .from("filter_jobs")
-        .select("job_id, youtube_id, error, created_at, user_id")
-        .eq("status", "failed")
-        .order("created_at", { ascending: false })
-        .limit(5),
+      // Placeholder - recent failed jobs will be computed below
+      Promise.resolve({ data: null }),
     ]);
 
     // Calculate total credits used
@@ -125,8 +121,39 @@ export async function GET() {
       subscription_tier: user.subscription_tier || "free",
     })) || [];
 
-    // Enrich recent failed jobs with user emails
-    const failedJobs = recentFailedJobsResult.data || [];
+    // Determine which failed jobs are actually resolved
+    const allFailedJobs = failedJobsResult.data || [];
+    let unresolvedFailedJobs = allFailedJobs;
+
+    if (allFailedJobs.length > 0) {
+      const failedYoutubeIds = [
+        ...new Set(allFailedJobs.map((j) => j.youtube_id)),
+      ];
+
+      const [cachedResult, completedJobsResult] = await Promise.all([
+        supabase
+          .from("videos")
+          .select("youtube_id")
+          .in("youtube_id", failedYoutubeIds)
+          .not("transcript", "is", null),
+        supabase
+          .from("filter_jobs")
+          .select("youtube_id")
+          .in("youtube_id", failedYoutubeIds)
+          .eq("status", "completed"),
+      ]);
+
+      const resolvedIds = new Set<string>();
+      cachedResult.data?.forEach((v) => resolvedIds.add(v.youtube_id));
+      completedJobsResult.data?.forEach((j) => resolvedIds.add(j.youtube_id));
+
+      unresolvedFailedJobs = allFailedJobs.filter(
+        (j) => !resolvedIds.has(j.youtube_id)
+      );
+    }
+
+    // Enrich recent unresolved failed jobs with user emails (limit to 5)
+    const recentUnresolved = unresolvedFailedJobs.slice(0, 5);
     let recentFailedJobs: Array<{
       job_id: string;
       youtube_id: string;
@@ -135,8 +162,8 @@ export async function GET() {
       user_email: string;
     }> = [];
 
-    if (failedJobs.length > 0) {
-      const userIds = [...new Set(failedJobs.map((j) => j.user_id))];
+    if (recentUnresolved.length > 0) {
+      const userIds = [...new Set(recentUnresolved.map((j) => j.user_id))];
       const { data: profiles } = await supabase
         .from("profiles")
         .select("id, email")
@@ -147,7 +174,7 @@ export async function GET() {
         emailMap[p.id] = p.email || "Unknown";
       });
 
-      recentFailedJobs = failedJobs.map((j) => ({
+      recentFailedJobs = recentUnresolved.map((j) => ({
         job_id: j.job_id,
         youtube_id: j.youtube_id,
         error: j.error,
@@ -165,7 +192,7 @@ export async function GET() {
         new_users_today: newUsersToday.count || 0,
         new_users_week: newUsersWeek.count || 0,
         revenue_this_month: revenueThisMonth,
-        failed_jobs: failedJobsResult.count || 0,
+        failed_jobs: unresolvedFailedJobs.length,
         processing_jobs: processingJobsResult.count || 0,
       },
       recentUsers,
