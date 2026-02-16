@@ -75,11 +75,25 @@ interface RelatedJob {
   completed_at: string | null;
 }
 
-interface OrchestratorStatus {
-  status: string;
+interface OrchestratorJob {
+  id?: string;
+  video_id?: string;
+  status?: string;
   progress?: number;
-  error?: string;
-  storage_path?: string;
+  error_message?: string;
+  error_code?: string;
+  external_transcription_id?: string;
+  webhook_received_at?: string;
+  created_at?: string;
+  video?: {
+    id?: string;
+    youtube_id?: string;
+    status?: string;
+    error_message?: string;
+    storage_path?: string;
+    processing_started_at?: string;
+    processing_completed_at?: string;
+  };
   [key: string]: unknown;
 }
 
@@ -137,7 +151,8 @@ export default function FilterJobDetailPage() {
   const [job, setJob] = useState<JobDetail | null>(null);
   const [video, setVideo] = useState<VideoInfo | null>(null);
   const [orchestratorStatus, setOrchestratorStatus] =
-    useState<OrchestratorStatus | null>(null);
+    useState<OrchestratorJob | null>(null);
+  const [orchestratorError, setOrchestratorError] = useState<string | null>(null);
   const [relatedJobs, setRelatedJobs] = useState<RelatedJob[]>([]);
   const [loading, setLoading] = useState(true);
   const [polling, setPolling] = useState(false);
@@ -174,6 +189,7 @@ export default function FilterJobDetailPage() {
         setJob(data.job);
         setVideo(data.video);
         setOrchestratorStatus(data.orchestrator_status);
+        setOrchestratorError(data.orchestrator_error || null);
         setRelatedJobs(data.related_jobs || []);
 
         // Start or stop polling based on job status
@@ -654,53 +670,154 @@ export default function FilterJobDetailPage() {
         </Card>
       )}
 
-      {/* Orchestrator Status */}
-      {orchestratorStatus && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-lg">Orchestrator Status</CardTitle>
-            <CardDescription>
-              Live status from the orchestrator service
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-              <div className="p-3 rounded-lg bg-muted/50">
-                <p className="text-xs text-muted-foreground">Status</p>
-                <p className="text-sm font-medium capitalize">
-                  {orchestratorStatus.status}
-                </p>
-              </div>
-              {orchestratorStatus.progress !== undefined && (
-                <div className="p-3 rounded-lg bg-muted/50">
-                  <p className="text-xs text-muted-foreground">Progress</p>
-                  <p className="text-sm font-medium">
-                    {orchestratorStatus.progress}%
-                  </p>
-                </div>
-              )}
-              {orchestratorStatus.storage_path && (
-                <div className="p-3 rounded-lg bg-muted/50">
-                  <p className="text-xs text-muted-foreground">
-                    Storage Path
-                  </p>
-                  <p className="text-xs font-mono truncate">
-                    {orchestratorStatus.storage_path}
-                  </p>
-                </div>
-              )}
-              {orchestratorStatus.error && (
-                <div className="p-3 rounded-lg bg-error/5 col-span-full">
-                  <p className="text-xs text-muted-foreground">Error</p>
-                  <p className="text-sm text-error font-mono">
-                    {orchestratorStatus.error}
-                  </p>
-                </div>
-              )}
+      {/* Orchestrator Diagnostics */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-lg">Orchestrator Diagnostics</CardTitle>
+          <CardDescription>
+            Live data from the orchestrator service
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {orchestratorError && !orchestratorStatus && (
+            <div className="p-3 rounded-lg bg-warning/10 border border-warning/20">
+              <p className="text-xs text-warning font-medium">Could not reach orchestrator</p>
+              <p className="text-xs text-warning/70 font-mono mt-1">{orchestratorError}</p>
             </div>
-          </CardContent>
-        </Card>
-      )}
+          )}
+
+          {orchestratorStatus ? (
+            <>
+              {/* Job status from orchestrator */}
+              <div>
+                <p className="text-xs font-medium text-muted-foreground mb-2 uppercase tracking-wide">
+                  Orchestrator Job
+                </p>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                  <div className="p-3 rounded-lg bg-muted/50">
+                    <p className="text-xs text-muted-foreground">Status</p>
+                    <p className="text-sm font-medium capitalize">
+                      {orchestratorStatus.status || "Unknown"}
+                    </p>
+                  </div>
+                  {orchestratorStatus.progress !== undefined && (
+                    <div className="p-3 rounded-lg bg-muted/50">
+                      <p className="text-xs text-muted-foreground">Raw Progress</p>
+                      <p className="text-sm font-medium">
+                        {orchestratorStatus.progress}%
+                      </p>
+                    </div>
+                  )}
+                  <div className="p-3 rounded-lg bg-muted/50">
+                    <p className="text-xs text-muted-foreground">ElevenLabs Transcription ID</p>
+                    <p className={cn(
+                      "text-sm font-mono",
+                      orchestratorStatus.external_transcription_id ? "text-success" : "text-muted-foreground"
+                    )}>
+                      {orchestratorStatus.external_transcription_id || "Not sent"}
+                    </p>
+                  </div>
+                  <div className="p-3 rounded-lg bg-muted/50">
+                    <p className="text-xs text-muted-foreground">Webhook Received</p>
+                    <p className={cn(
+                      "text-sm",
+                      orchestratorStatus.webhook_received_at ? "text-success font-medium" : "text-muted-foreground"
+                    )}>
+                      {orchestratorStatus.webhook_received_at
+                        ? formatDate(new Date(orchestratorStatus.webhook_received_at))
+                        : "Not yet"
+                      }
+                    </p>
+                  </div>
+                  {orchestratorStatus.created_at && (
+                    <div className="p-3 rounded-lg bg-muted/50">
+                      <p className="text-xs text-muted-foreground">Created (Orchestrator)</p>
+                      <p className="text-sm font-medium">
+                        {formatDate(new Date(orchestratorStatus.created_at))}
+                      </p>
+                    </div>
+                  )}
+                  {(orchestratorStatus.error_message || orchestratorStatus.error) && (
+                    <div className="p-3 rounded-lg bg-error/5 border border-error/10 col-span-full">
+                      <p className="text-xs text-muted-foreground">Orchestrator Error</p>
+                      <p className="text-sm text-error font-mono whitespace-pre-wrap break-all">
+                        {orchestratorStatus.error_message || orchestratorStatus.error}
+                      </p>
+                      {orchestratorStatus.error_code && (
+                        <p className="text-xs text-error/70 mt-1">Code: {orchestratorStatus.error_code}</p>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Video record from orchestrator */}
+              {orchestratorStatus.video && (
+                <div>
+                  <p className="text-xs font-medium text-muted-foreground mb-2 uppercase tracking-wide">
+                    Orchestrator Video Record
+                  </p>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                    <div className="p-3 rounded-lg bg-muted/50">
+                      <p className="text-xs text-muted-foreground">Video Status</p>
+                      <p className="text-sm font-medium capitalize">
+                        {orchestratorStatus.video.status || "Unknown"}
+                      </p>
+                    </div>
+                    <div className="p-3 rounded-lg bg-muted/50">
+                      <p className="text-xs text-muted-foreground">Storage Path</p>
+                      <p className={cn(
+                        "text-xs font-mono truncate",
+                        orchestratorStatus.video.storage_path ? "text-success" : "text-muted-foreground"
+                      )}>
+                        {orchestratorStatus.video.storage_path || "None"}
+                      </p>
+                    </div>
+                    {orchestratorStatus.video.processing_started_at && (
+                      <div className="p-3 rounded-lg bg-muted/50">
+                        <p className="text-xs text-muted-foreground">Processing Started</p>
+                        <p className="text-sm font-medium">
+                          {formatDate(new Date(orchestratorStatus.video.processing_started_at))}
+                        </p>
+                      </div>
+                    )}
+                    {orchestratorStatus.video.processing_completed_at && (
+                      <div className="p-3 rounded-lg bg-muted/50">
+                        <p className="text-xs text-muted-foreground">Processing Completed</p>
+                        <p className="text-sm font-medium">
+                          {formatDate(new Date(orchestratorStatus.video.processing_completed_at))}
+                        </p>
+                      </div>
+                    )}
+                    {orchestratorStatus.video.error_message && (
+                      <div className="p-3 rounded-lg bg-error/5 border border-error/10 col-span-full">
+                        <p className="text-xs text-muted-foreground">Video Error</p>
+                        <p className="text-sm text-error font-mono whitespace-pre-wrap break-all">
+                          {orchestratorStatus.video.error_message}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Raw data toggle for debugging */}
+              <details className="mt-2">
+                <summary className="text-xs text-muted-foreground cursor-pointer hover:text-foreground">
+                  View raw orchestrator response
+                </summary>
+                <pre className="mt-2 p-3 rounded-lg bg-muted/50 text-xs font-mono overflow-x-auto whitespace-pre-wrap break-all max-h-64 overflow-y-auto">
+                  {JSON.stringify(orchestratorStatus, null, 2)}
+                </pre>
+              </details>
+            </>
+          ) : !orchestratorError ? (
+            <p className="text-sm text-muted-foreground">
+              No orchestrator data available for this job.
+            </p>
+          ) : null}
+        </CardContent>
+      </Card>
 
       {/* Related Jobs */}
       {relatedJobs.length > 0 && (

@@ -1,4 +1,4 @@
-import { createServiceClient } from "@/lib/supabase/server";
+import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/admin-auth";
 
@@ -7,6 +7,19 @@ const ORCHESTRATOR_URL =
   "https://safeplay-orchestrator-80308222868.us-central1.run.app";
 
 const STALE_THRESHOLD_MS = 30 * 60 * 1000; // 30 minutes
+
+/**
+ * Get the current admin's access token for orchestrator calls
+ */
+async function getAdminAccessToken(): Promise<string | null> {
+  try {
+    const supabase = await createClient();
+    const { data: { session } } = await supabase.auth.getSession();
+    return session?.access_token || null;
+  } catch {
+    return null;
+  }
+}
 
 /**
  * GET /api/admin/filter-jobs/[jobId]
@@ -114,17 +127,27 @@ export async function GET(
       ["processing", "pending", "downloading", "transcribing"].includes(job.status) &&
       now - new Date(job.created_at).getTime() > STALE_THRESHOLD_MS;
 
-    // Try to get live status from orchestrator (non-blocking, with timeout)
+    // Try to get live status from orchestrator (with auth)
     // Sync status back to local DB if it changed
     let orchestratorStatus = null;
+    let orchestratorError: string | null = null;
     let liveStatus = job.status;
     let liveProgress = job.progress;
     let liveError = job.error;
+
+    const accessToken = await getAdminAccessToken();
+    const orchHeaders: Record<string, string> = {};
+    if (accessToken) {
+      orchHeaders["Authorization"] = `Bearer ${accessToken}`;
+    }
+
     try {
       const orchResponse = await fetch(`${ORCHESTRATOR_URL}/api/jobs/${jobId}`, {
         method: "GET",
+        headers: orchHeaders,
         signal: AbortSignal.timeout(5000),
       });
+
       if (orchResponse.ok) {
         orchestratorStatus = await orchResponse.json();
 
@@ -145,7 +168,7 @@ export async function GET(
               liveProgress = 100;
               break;
             case "failed":
-              liveError = orchestratorStatus.error || job.error;
+              liveError = orchestratorStatus.error || orchestratorStatus.error_message || job.error;
               break;
           }
 
@@ -155,8 +178,8 @@ export async function GET(
               status: liveStatus,
               progress: liveProgress,
             };
-            if (liveStatus === "failed" && orchestratorStatus.error) {
-              updateData.error = orchestratorStatus.error;
+            if (liveStatus === "failed" && (orchestratorStatus.error || orchestratorStatus.error_message)) {
+              updateData.error = orchestratorStatus.error || orchestratorStatus.error_message;
             }
             if (liveStatus === "completed") {
               updateData.completed_at = new Date().toISOString();
@@ -167,13 +190,16 @@ export async function GET(
               .eq("job_id", jobId);
           }
         }
+      } else {
+        const errBody = await orchResponse.json().catch(() => ({}));
+        orchestratorError = `HTTP ${orchResponse.status}: ${errBody.error || orchResponse.statusText}`;
       }
-    } catch {
-      // Orchestrator unreachable - that's ok, use local data
+    } catch (err) {
+      orchestratorError = `Unreachable: ${err instanceof Error ? err.message : String(err)}`;
     }
 
     // Re-check download status if orchestrator reports it
-    if (orchestratorStatus?.storage_path) {
+    if (orchestratorStatus?.video?.storage_path || orchestratorStatus?.storage_path) {
       hasDownload = true;
     }
     if (liveStatus === "transcribing" || liveStatus === "completed" || liveProgress > 35) {
@@ -214,6 +240,7 @@ export async function GET(
           }
         : null,
       orchestrator_status: orchestratorStatus,
+      orchestrator_error: orchestratorError,
       related_jobs: relatedJobs || [],
     });
   } catch (error) {
