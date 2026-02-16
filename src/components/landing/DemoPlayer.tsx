@@ -172,7 +172,7 @@ export function DemoPlayer({
   const isFadingRef = useRef(false); // Track fade state like Chrome extension
   const isBleepingRef = useRef(false); // Track bleep state separately
   const filterEnabledRef = useRef(true);
-  const filterModeRef = useRef<FilterMode>("mute");
+  const filterModeRef = useRef<FilterMode>(defaultFilterMode);
   const muteIntervalsRef = useRef<MuteInterval[]>([]);
 
   // Refs for dynamic player settings (used in interval callbacks)

@@ -19,7 +19,6 @@ import {
   Home,
   AlertTriangle,
   Rocket,
-  SlidersHorizontal,
 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
@@ -44,7 +43,6 @@ const navigation = [
   { name: "Subscriptions", href: "/admin/subscriptions", icon: CreditCard },
   { name: "Support Tickets", href: "/admin/tickets", icon: Ticket },
   { name: "Site Settings", href: "/admin/site-settings", icon: Rocket },
-  { name: "Launch Mode", href: "/admin/site-settings/launch-mode", icon: SlidersHorizontal },
   { name: "Audit Log", href: "/admin/audit-log", icon: ScrollText, permission: "view_audit_log" as const },
   { name: "Admin Settings", href: "/admin/settings", icon: Settings, permission: "manage_admins" as const },
 ];
