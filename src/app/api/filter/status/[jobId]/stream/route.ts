@@ -3,9 +3,9 @@ import { createServiceClient } from "@/lib/supabase/server";
 import { authenticateRequest } from "@/lib/auth-helper";
 import { fetchYouTubeDuration } from "@/lib/youtube";
 import { fetchWithRetry, isRetryableError } from "@/lib/retry";
+import { prepareTranscriptForCache } from "@/lib/transcript-utils";
 
-const ORCHESTRATOR_URL = process.env.ORCHESTRATION_API_URL || "https://safeplay-orchestrator-production.up.railway.app";
-const ORCHESTRATOR_API_KEY = process.env.ORCHESTRATION_API_KEY;
+const ORCHESTRATOR_URL = process.env.ORCHESTRATION_API_URL || "https://safeplay-orchestrator-80308222868.us-central1.run.app";
 
 // Logging helper for consistent format
 function log(context: string, message: string, data?: Record<string, unknown>) {
@@ -51,7 +51,7 @@ function mapProgress(status: string, progress: number): { displayProgress: numbe
   return { displayProgress, displayMessage };
 }
 
-// Process job completion: deduct credits, save video, create history
+// Process job completion: save video, deduct credits, create history
 async function processCompletion(
   requestId: string,
   jobId: string,
@@ -120,7 +120,45 @@ async function processCompletion(
     };
   }
 
-  // Deduct credits
+  // Cache video in database BEFORE deducting credits
+  // Strip character/word-level timing to reduce payload size for long videos
+  const { data: videoRecord, error: videoError } = await supabase
+    .from("videos")
+    .upsert({
+      youtube_id: jobRecord.youtube_id,
+      title: data.video?.title || data.transcript?.title || "Unknown Video",
+      channel_name: data.video?.channel_name || null,
+      duration_seconds: durationSeconds,
+      thumbnail_url: `https://img.youtube.com/vi/${jobRecord.youtube_id}/hqdefault.jpg`,
+      transcript: prepareTranscriptForCache(data.transcript as Record<string, unknown>),
+      cached_at: new Date().toISOString(),
+    }, { onConflict: 'youtube_id' })
+    .select()
+    .single();
+
+  log(requestId, "Video cache result", {
+    success: !videoError,
+    videoId: videoRecord?.id,
+    error: videoError?.message
+  });
+
+  if (videoError || !videoRecord) {
+    log(requestId, "CRITICAL: Video cache failed - not deducting credits", {
+      error: videoError?.message,
+    });
+    await supabase
+      .from("filter_jobs")
+      .update({ status: "failed", error: "Failed to save video" })
+      .eq("job_id", jobId);
+
+    return {
+      success: false,
+      error: "Failed to save video. Credits were not charged. Please try again.",
+      error_code: "CACHE_FAILED",
+    };
+  }
+
+  // Video cached successfully — now deduct credits
   const newBalance = availableCredits - creditCost;
   const newUsed = (creditBalance?.used_this_period || 0) + creditCost;
 
@@ -143,49 +181,24 @@ async function processCompletion(
     description: `Filtered video: ${data.video?.title || jobRecord.youtube_id}`,
   });
 
-  // Cache video in database
-  const { data: videoRecord, error: videoError } = await supabase
-    .from("videos")
-    .upsert({
-      youtube_id: jobRecord.youtube_id,
-      title: data.video?.title || data.transcript?.title || "Unknown Video",
-      channel_name: data.video?.channel_name || null,
-      duration_seconds: durationSeconds,
-      thumbnail_url: `https://img.youtube.com/vi/${jobRecord.youtube_id}/hqdefault.jpg`,
-      transcript: data.transcript,
-      cached_at: new Date().toISOString(),
-    }, { onConflict: 'youtube_id' })
+  // Create history entry
+  const { data: historyEntry, error: historyError } = await supabase
+    .from("filter_history")
+    .insert({
+      user_id: userId,
+      video_id: videoRecord.id,
+      filter_type: jobRecord.filter_type || "mute",
+      custom_words: jobRecord.custom_words || [],
+      credits_used: creditCost,
+    })
     .select()
     .single();
 
-  log(requestId, "Video cache result", {
-    success: !videoError,
-    videoId: videoRecord?.id,
-    error: videoError?.message
+  log(requestId, "History insert result", {
+    success: !historyError,
+    historyId: historyEntry?.id,
+    error: historyError?.message
   });
-
-  // Create history entry
-  let historyEntry = null;
-  if (videoRecord && !videoError) {
-    const result = await supabase
-      .from("filter_history")
-      .insert({
-        user_id: userId,
-        video_id: videoRecord.id,
-        filter_type: jobRecord.filter_type || "mute",
-        custom_words: jobRecord.custom_words || [],
-        credits_used: creditCost,
-      })
-      .select()
-      .single();
-
-    historyEntry = result.data;
-    log(requestId, "History insert result", {
-      success: !result.error,
-      historyId: historyEntry?.id,
-      error: result.error?.message
-    });
-  }
 
   // Mark job as completed
   await supabase
@@ -279,8 +292,8 @@ export async function GET(
       "Accept": "text/event-stream",
     };
 
-    if (ORCHESTRATOR_API_KEY) {
-      headers["Authorization"] = `Bearer ${ORCHESTRATOR_API_KEY}`;
+    if (auth.accessToken) {
+      headers["Authorization"] = `Bearer ${auth.accessToken}`;
     }
 
     log(requestId, "Connecting to orchestrator SSE", { url: `${ORCHESTRATOR_URL}/api/jobs/${jobId}/stream` });

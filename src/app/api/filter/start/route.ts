@@ -2,9 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
 import { authenticateRequest } from "@/lib/auth-helper";
 import { fetchWithRetry, isRetryableError } from "@/lib/retry";
+import { prepareTranscriptForCache } from "@/lib/transcript-utils";
 
-const ORCHESTRATOR_URL = process.env.ORCHESTRATION_API_URL || "https://safeplay-orchestrator-production.up.railway.app";
-const ORCHESTRATOR_API_KEY = process.env.ORCHESTRATION_API_KEY;
+const ORCHESTRATOR_URL = process.env.ORCHESTRATION_API_URL || "https://safeplay-orchestrator-80308222868.us-central1.run.app";
 
 // Logging helper for consistent format
 function log(context: string, message: string, data?: Record<string, unknown>) {
@@ -104,8 +104,8 @@ export async function POST(request: NextRequest) {
       "Content-Type": "application/json",
     };
 
-    if (ORCHESTRATOR_API_KEY) {
-      headers["Authorization"] = `Bearer ${ORCHESTRATOR_API_KEY}`;
+    if (auth.accessToken) {
+      headers["Authorization"] = `Bearer ${auth.accessToken}`;
     }
 
     let response: Response;
@@ -195,7 +195,42 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      // Deduct credits
+      // Cache video in our database BEFORE deducting credits
+      // Strip character-level timing to reduce payload size for long videos
+      const { data: videoRecord, error: videoError } = await supabase
+        .from("videos")
+        .upsert({
+          youtube_id: youtube_id,
+          title: data.video?.title || data.transcript.title || "Unknown Video",
+          channel_name: data.video?.channel_name || null,
+          duration_seconds: durationSeconds,
+          thumbnail_url: `https://img.youtube.com/vi/${youtube_id}/hqdefault.jpg`,
+          transcript: prepareTranscriptForCache(data.transcript),
+          cached_at: new Date().toISOString(),
+        }, { onConflict: 'youtube_id' })
+        .select()
+        .single();
+
+      log(requestId, "Video cache result", {
+        success: !videoError,
+        videoId: videoRecord?.id,
+        youtubeId: youtube_id,
+        error: videoError?.message,
+        errorCode: videoError?.code
+      });
+
+      if (videoError || !videoRecord) {
+        log(requestId, "CRITICAL: Video cache failed - not deducting credits", {
+          error: videoError?.message,
+          code: videoError?.code
+        });
+        return NextResponse.json(
+          { error: "Failed to save video. Credits were not charged. Please try again.", error_code: "CACHE_FAILED" },
+          { status: 502 }
+        );
+      }
+
+      // Video cached successfully — now deduct credits
       const newBalance = availableCredits - creditCost;
       const newUsed = (creditBalance?.used_this_period || 0) + creditCost;
 
@@ -234,52 +269,6 @@ export async function POST(request: NextRequest) {
         txId: txData?.id,
         error: txError?.message
       });
-
-      // Cache video in our database
-      const { data: videoRecord, error: videoError } = await supabase
-        .from("videos")
-        .upsert({
-          youtube_id: youtube_id,
-          title: data.video?.title || data.transcript.title || "Unknown Video",
-          channel_name: data.video?.channel_name || null,
-          duration_seconds: durationSeconds,
-          thumbnail_url: `https://img.youtube.com/vi/${youtube_id}/hqdefault.jpg`,
-          transcript: data.transcript,
-          cached_at: new Date().toISOString(),
-        }, { onConflict: 'youtube_id' })
-        .select()
-        .single();
-
-      log(requestId, "Video cache result", {
-        success: !videoError,
-        videoId: videoRecord?.id,
-        youtubeId: youtube_id,
-        error: videoError?.message,
-        errorCode: videoError?.code
-      });
-
-      // If video caching failed, we cannot create history entry
-      if (videoError || !videoRecord) {
-        log(requestId, "CRITICAL: Video cache failed - cannot create history", {
-          error: videoError?.message,
-          code: videoError?.code
-        });
-        // Still return success to user since filtering worked
-        return NextResponse.json({
-          status: "completed",
-          cached: true,
-          transcript: data.transcript,
-          video: {
-            youtube_id: youtube_id,
-            title: data.video?.title || data.transcript.title || "Unknown Video",
-            channel_name: data.video?.channel_name || null,
-            duration_seconds: durationSeconds,
-            thumbnail_url: `https://img.youtube.com/vi/${youtube_id}/hqdefault.jpg`,
-          },
-          credits_used: creditCost,
-          warning: "History could not be saved due to database error",
-        });
-      }
 
       // Record in filter history
       const { data: historyEntry, error: historyError } = await supabase

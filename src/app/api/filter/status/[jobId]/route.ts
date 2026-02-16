@@ -3,9 +3,9 @@ import { createServiceClient } from "@/lib/supabase/server";
 import { authenticateRequest } from "@/lib/auth-helper";
 import { fetchYouTubeDuration } from "@/lib/youtube";
 import { fetchWithRetry, isRetryableError } from "@/lib/retry";
+import { prepareTranscriptForCache } from "@/lib/transcript-utils";
 
-const ORCHESTRATOR_URL = process.env.ORCHESTRATION_API_URL || "https://safeplay-orchestrator-production.up.railway.app";
-const ORCHESTRATOR_API_KEY = process.env.ORCHESTRATION_API_KEY;
+const ORCHESTRATOR_URL = process.env.ORCHESTRATION_API_URL || "https://safeplay-orchestrator-80308222868.us-central1.run.app";
 
 // Logging helper for consistent format
 function log(context: string, message: string, data?: Record<string, unknown>) {
@@ -77,8 +77,8 @@ export async function GET(
 
     const headers: Record<string, string> = {};
 
-    if (ORCHESTRATOR_API_KEY) {
-      headers["Authorization"] = `Bearer ${ORCHESTRATOR_API_KEY}`;
+    if (auth.accessToken) {
+      headers["Authorization"] = `Bearer ${auth.accessToken}`;
     }
 
     let response: Response;
@@ -176,7 +176,7 @@ export async function GET(
       })
       .eq("job_id", jobId);
 
-    // If completed, finalize the job (deduct credits, save video, save history)
+    // If completed, finalize the job (save video, deduct credits, save history)
     if (data.status === "completed" && data.transcript) {
       log(requestId, "=== Job completed - finalizing ===");
 
@@ -235,7 +235,49 @@ export async function GET(
         });
       }
 
-      // Deduct credits
+      // Cache video in our database BEFORE deducting credits
+      // Strip character/word-level timing to reduce payload size for long videos
+      const { data: videoRecord, error: videoError } = await supabase
+        .from("videos")
+        .upsert({
+          youtube_id: jobRecord.youtube_id,
+          title: data.video?.title || data.transcript.title || "Unknown Video",
+          channel_name: data.video?.channel_name || null,
+          duration_seconds: durationSeconds,
+          thumbnail_url: `https://img.youtube.com/vi/${jobRecord.youtube_id}/hqdefault.jpg`,
+          transcript: prepareTranscriptForCache(data.transcript),
+          cached_at: new Date().toISOString(),
+        }, { onConflict: 'youtube_id' })
+        .select()
+        .single();
+
+      log(requestId, "Video cache result", {
+        success: !videoError,
+        videoId: videoRecord?.id,
+        youtubeId: jobRecord.youtube_id,
+        error: videoError?.message,
+        errorCode: videoError?.code
+      });
+
+      if (videoError || !videoRecord) {
+        log(requestId, "CRITICAL: Video cache failed - not deducting credits", {
+          error: videoError?.message,
+          code: videoError?.code
+        });
+        // Don't deduct credits — user can retry
+        await supabase
+          .from("filter_jobs")
+          .update({ status: "failed", error: "Failed to save video" })
+          .eq("job_id", jobId);
+
+        return NextResponse.json({
+          status: "failed",
+          error: "Failed to save video. Credits were not charged. Please try again.",
+          error_code: "CACHE_FAILED",
+        });
+      }
+
+      // Video cached successfully — now deduct credits
       const newBalance = availableCredits - creditCost;
       const newUsed = (creditBalance?.used_this_period || 0) + creditCost;
 
@@ -275,64 +317,27 @@ export async function GET(
         error: txError?.message
       });
 
-      // Cache video in our database
-      const { data: videoRecord, error: videoError } = await supabase
-        .from("videos")
-        .upsert({
-          youtube_id: jobRecord.youtube_id,
-          title: data.video?.title || data.transcript.title || "Unknown Video",
-          channel_name: data.video?.channel_name || null,
-          duration_seconds: durationSeconds,
-          thumbnail_url: `https://img.youtube.com/vi/${jobRecord.youtube_id}/hqdefault.jpg`,
-          transcript: data.transcript,
-          cached_at: new Date().toISOString(),
-        }, { onConflict: 'youtube_id' })
+      // Record in filter history
+      const { data: historyEntry, error: historyError } = await supabase
+        .from("filter_history")
+        .insert({
+          user_id: auth.user.id,
+          video_id: videoRecord.id,
+          filter_type: jobRecord.filter_type || "mute",
+          custom_words: jobRecord.custom_words || [],
+          credits_used: creditCost,
+        })
         .select()
         .single();
 
-      log(requestId, "Video cache result", {
-        success: !videoError,
-        videoId: videoRecord?.id,
-        youtubeId: jobRecord.youtube_id,
-        error: videoError?.message,
-        errorCode: videoError?.code
+      log(requestId, "History insert result", {
+        success: !historyError,
+        historyId: historyEntry?.id,
+        videoId: videoRecord.id,
+        creditsUsed: creditCost,
+        error: historyError?.message,
+        errorCode: historyError?.code
       });
-
-      // If video caching failed, we cannot create history entry properly
-      let historyEntry = null;
-      let historyError = null;
-
-      if (videoError || !videoRecord) {
-        log(requestId, "CRITICAL: Video cache failed - cannot create history", {
-          error: videoError?.message,
-          code: videoError?.code
-        });
-      } else {
-        // Record in filter history
-        const result = await supabase
-          .from("filter_history")
-          .insert({
-            user_id: auth.user.id,
-            video_id: videoRecord.id,
-            filter_type: jobRecord.filter_type || "mute",
-            custom_words: jobRecord.custom_words || [],
-            credits_used: creditCost,
-          })
-          .select()
-          .single();
-
-        historyEntry = result.data;
-        historyError = result.error;
-
-        log(requestId, "History insert result", {
-          success: !historyError,
-          historyId: historyEntry?.id,
-          videoId: videoRecord.id,
-          creditsUsed: creditCost,
-          error: historyError?.message,
-          errorCode: historyError?.code
-        });
-      }
 
       // Mark job as completed
       const { error: jobUpdateError } = await supabase
