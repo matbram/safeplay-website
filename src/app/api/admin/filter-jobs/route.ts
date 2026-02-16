@@ -65,7 +65,26 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // Check which failed jobs have been resolved (video now cached with transcript)
+    // Check video records for all youtube_ids in this page (for resolved + download detection)
+    const pageYoutubeIds = [...new Set((jobs || []).map((j) => j.youtube_id))];
+    let resolvedIds = new Set<string>();
+    let downloadedIds = new Set<string>();
+
+    if (pageYoutubeIds.length > 0) {
+      const { data: videoRecords } = await supabase
+        .from("videos")
+        .select("youtube_id, transcript, storage_path")
+        .in("youtube_id", pageYoutubeIds);
+
+      if (videoRecords) {
+        videoRecords.forEach((v) => {
+          if (v.transcript) resolvedIds.add(v.youtube_id);
+          if (v.storage_path) downloadedIds.add(v.youtube_id);
+        });
+      }
+    }
+
+    // Also check failed youtube_ids for completed jobs (another resolution path)
     const failedYoutubeIds = [
       ...new Set(
         (jobs || [])
@@ -73,19 +92,6 @@ export async function GET(request: NextRequest) {
           .map((j) => j.youtube_id)
       ),
     ];
-
-    let resolvedIds = new Set<string>();
-    if (failedYoutubeIds.length > 0) {
-      const { data: cachedVideos } = await supabase
-        .from("videos")
-        .select("youtube_id")
-        .in("youtube_id", failedYoutubeIds)
-        .not("transcript", "is", null);
-
-      if (cachedVideos) {
-        resolvedIds = new Set(cachedVideos.map((v) => v.youtube_id));
-      }
-    }
 
     // Also check if a later job for the same youtube_id succeeded
     if (failedYoutubeIds.length > 0) {
@@ -160,11 +166,20 @@ export async function GET(request: NextRequest) {
         ) &&
         now - new Date(job.created_at).getTime() > STALE_THRESHOLD_MS;
 
+      // Check if a downloaded file exists in Supabase Storage (storage_path set by orchestrator)
+      // Fall back to progress-based inference if no storage record exists
+      const hasDownload =
+        downloadedIds.has(job.youtube_id) ||
+        job.status === "transcribing" ||
+        (job.status === "completed") ||
+        (job.progress != null && job.progress > 35);
+
       return {
         ...job,
         user_email: userMap[job.user_id] || "Unknown",
         resolved: job.status === "failed" && resolvedIds.has(job.youtube_id),
         stale: isStale,
+        has_download: hasDownload,
       };
     });
 

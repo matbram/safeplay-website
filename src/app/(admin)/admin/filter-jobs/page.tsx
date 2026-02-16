@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import {
   Video,
   Search,
@@ -18,6 +19,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Sparkles,
+  Eye,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -57,6 +59,7 @@ interface FilterJob {
   completed_at: string | null;
   resolved: boolean;
   stale: boolean;
+  has_download: boolean;
 }
 
 interface JobStats {
@@ -106,6 +109,7 @@ const statusConfig: Record<
 };
 
 export default function FilterJobsPage() {
+  const router = useRouter();
   const { hasPermission } = useAdmin();
   const [jobs, setJobs] = useState<FilterJob[]>([]);
   const [stats, setStats] = useState<JobStats>({
@@ -456,22 +460,19 @@ export default function FilterJobsPage() {
                         <tr key={job.id} className="hover:bg-muted/30">
                           {/* Video */}
                           <td className="px-4 py-3">
-                            <div className="flex items-center gap-3">
+                            <div
+                              className="flex items-center gap-3 cursor-pointer"
+                              onClick={() => router.push(`/admin/filter-jobs/${job.job_id}`)}
+                            >
                               <img
                                 src={`https://img.youtube.com/vi/${job.youtube_id}/default.jpg`}
                                 alt=""
                                 className="w-16 h-12 rounded object-cover bg-muted"
                               />
                               <div>
-                                <a
-                                  href={`https://youtube.com/watch?v=${job.youtube_id}`}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="text-sm font-medium hover:text-primary flex items-center gap-1"
-                                >
+                                <span className="text-sm font-medium hover:text-primary flex items-center gap-1">
                                   {job.youtube_id}
-                                  <ExternalLink className="w-3 h-3" />
-                                </a>
+                                </span>
                                 <p className="text-xs text-muted-foreground">
                                   {job.filter_type}
                                   {job.credits_used > 0 &&
@@ -557,6 +558,17 @@ export default function FilterJobsPage() {
                           {/* Actions */}
                           <td className="px-4 py-3 text-right">
                             <div className="flex items-center justify-end gap-1">
+                              {/* View details */}
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8"
+                                onClick={() => router.push(`/admin/filter-jobs/${job.job_id}`)}
+                                title="View details"
+                              >
+                                <Eye className="w-4 h-4" />
+                              </Button>
+
                               {/* Retry - full reprocess */}
                               {(job.status === "failed" || job.stale) && (
                                 <Button
@@ -575,8 +587,8 @@ export default function FilterJobsPage() {
                                 </Button>
                               )}
 
-                              {/* Retranscribe - skip download */}
-                              {(job.status === "failed" || job.stale) && (
+                              {/* Retranscribe - only if download file exists */}
+                              {(job.status === "failed" || job.stale) && job.has_download && (
                                 <Button
                                   variant="ghost"
                                   size="icon"
