@@ -18,7 +18,12 @@ export default async function HomePage() {
 
   // Show pre-launch landing page if in pre-launch mode
   if (launchMode.is_pre_launch) {
-    return <PreLaunchLanding />;
+    return (
+      <PreLaunchLanding
+        videoCategories={launchMode.video_categories}
+        playerSettings={launchMode.player_settings}
+      />
+    );
   }
 
   // Show full landing page when launched
