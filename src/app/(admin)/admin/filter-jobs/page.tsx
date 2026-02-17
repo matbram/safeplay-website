@@ -20,6 +20,7 @@ import {
   ChevronRight,
   Sparkles,
   Eye,
+  UserCheck,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -61,6 +62,8 @@ interface FilterJob {
   stale: boolean;
   has_download: boolean;
   has_transcript: boolean;
+  needs_review: boolean;
+  auto_retry_count: number;
 }
 
 interface JobStats {
@@ -71,6 +74,7 @@ interface JobStats {
   processing: number;
   stale: number;
   completed: number;
+  needs_review: number;
 }
 
 const statusConfig: Record<
@@ -121,6 +125,7 @@ export default function FilterJobsPage() {
     processing: 0,
     stale: 0,
     completed: 0,
+    needs_review: 0,
   });
   const [cleaningUp, setCleaningUp] = useState(false);
   const [markingStale, setMarkingStale] = useState(false);
@@ -300,6 +305,33 @@ export default function FilterJobsPage() {
         </div>
       )}
 
+      {/* Needs human review banner */}
+      {stats.needs_review > 0 && (
+        <div className="flex items-center gap-3 p-4 rounded-lg bg-error/10 border border-error/20">
+          <UserCheck className="w-5 h-5 text-error shrink-0" />
+          <div className="flex-1">
+            <p className="text-sm font-medium text-error">
+              {stats.needs_review} job{stats.needs_review !== 1 && "s"} need human review
+            </p>
+            <p className="text-xs text-error/70 mt-0.5">
+              These jobs have failed {">"}3 automatic retries and require manual investigation
+            </p>
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            className="border-error/30 text-error hover:bg-error/10"
+            onClick={() => {
+              setStatusFilter("needs_review");
+              setPage(1);
+            }}
+          >
+            <Eye className="w-4 h-4 mr-1" />
+            View Jobs
+          </Button>
+        </div>
+      )}
+
       {/* Stale jobs banner */}
       {stats.stale > 0 && (
         <div className="flex items-center gap-3 p-4 rounded-lg bg-warning/10 border border-warning/20">
@@ -330,7 +362,7 @@ export default function FilterJobsPage() {
       )}
 
       {/* Stats */}
-      <StatCardGrid columns={4}>
+      <StatCardGrid columns={5}>
         <StatCard
           title="Total Jobs"
           value={stats.total.toLocaleString()}
@@ -366,6 +398,14 @@ export default function FilterJobsPage() {
               : undefined
           }
           valueClassName={stats.failed_unresolved > 0 ? "text-error" : ""}
+        />
+        <StatCard
+          title="Needs Review"
+          value={stats.needs_review.toLocaleString()}
+          icon={UserCheck}
+          loading={loading}
+          description="Escalated for human review"
+          valueClassName={stats.needs_review > 0 ? "text-error" : ""}
         />
       </StatCardGrid>
 
@@ -412,6 +452,7 @@ export default function FilterJobsPage() {
                 <SelectItem value="processing">Processing</SelectItem>
                 <SelectItem value="completed">Completed</SelectItem>
                 <SelectItem value="failed">Failed</SelectItem>
+                <SelectItem value="needs_review">Needs Review</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -527,6 +568,20 @@ export default function FilterJobsPage() {
                                   <AlertTriangle className="w-3 h-3 mr-1" />
                                   Stuck
                                 </Badge>
+                              )}
+                              {job.needs_review && (
+                                <Badge
+                                  variant="outline"
+                                  className="text-xs w-fit bg-error/10 text-error border-error/20"
+                                >
+                                  <UserCheck className="w-3 h-3 mr-1" />
+                                  Needs Review
+                                </Badge>
+                              )}
+                              {job.auto_retry_count > 0 && !job.needs_review && job.status === "failed" && (
+                                <span className="text-xs text-muted-foreground">
+                                  {job.auto_retry_count} auto-retries
+                                </span>
                               )}
                               {job.progress > 0 &&
                                 job.progress < 100 &&

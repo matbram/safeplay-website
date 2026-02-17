@@ -50,7 +50,9 @@ export async function GET(request: NextRequest) {
       .order("created_at", { ascending: false })
       .range(offset, offset + limit - 1);
 
-    if (status && status !== "all") {
+    if (status === "needs_review") {
+      query = query.eq("needs_review", true).eq("status", "failed");
+    } else if (status && status !== "all") {
       query = query.eq("status", status);
     }
 
@@ -125,7 +127,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Get stats — count unresolved failures separately
-    const [totalResult, allFailedResult, processingResult, completedResult] =
+    const [totalResult, allFailedResult, processingResult, completedResult, needsReviewResult] =
       await Promise.all([
         supabase
           .from("filter_jobs")
@@ -142,6 +144,11 @@ export async function GET(request: NextRequest) {
           .from("filter_jobs")
           .select("id", { count: "exact", head: true })
           .eq("status", "completed"),
+        supabase
+          .from("filter_jobs")
+          .select("id", { count: "exact", head: true })
+          .eq("needs_review", true)
+          .eq("status", "failed"),
       ]);
 
     // For unresolved count, check all failed youtube_ids against videos + completed jobs
@@ -199,6 +206,8 @@ export async function GET(request: NextRequest) {
         stale: isStale,
         has_download: hasDownload,
         has_transcript: transcriptIds.has(job.youtube_id),
+        needs_review: job.needs_review || false,
+        auto_retry_count: job.auto_retry_count || 0,
       };
     });
 
@@ -215,6 +224,7 @@ export async function GET(request: NextRequest) {
         processing: processingResult.count || 0,
         stale: staleCount,
         completed: completedResult.count || 0,
+        needs_review: needsReviewResult.count || 0,
       },
     });
   } catch (error) {
