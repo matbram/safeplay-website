@@ -497,7 +497,10 @@ export async function POST(request: NextRequest) {
               .upsert({
                 youtube_id: targetYoutubeId,
                 transcript: cleanedTranscript,
-                title: orchData.transcript?.title || orchData.video?.title || "Unknown Video",
+                title: (() => {
+                  const t = orchData.transcript?.title || orchData.video?.title;
+                  return (t && t !== "(cached)") ? t : "Unknown Video";
+                })(),
                 thumbnail_url: `https://img.youtube.com/vi/${targetYoutubeId}/hqdefault.jpg`,
                 cached_at: new Date().toISOString(),
               }, { onConflict: "youtube_id" });

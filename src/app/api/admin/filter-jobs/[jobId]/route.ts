@@ -229,8 +229,10 @@ export async function GET(
         if (orchestratorStatus.video?.storage_path || orchestratorStatus.storage_path) {
           upsertData.storage_path = orchestratorStatus.video?.storage_path || orchestratorStatus.storage_path;
         }
-        if (!videoRecord?.title) {
-          upsertData.title = orchestratorStatus.transcript?.title || orchestratorStatus.video?.title || "Unknown Video";
+        if (!videoRecord?.title || videoRecord.title === "Unknown Video") {
+          const orchTitle = (orchestratorStatus.transcript as Record<string, unknown>)?.title as string
+            || orchestratorStatus.video?.title;
+          upsertData.title = (orchTitle && orchTitle !== "(cached)") ? orchTitle : "Unknown Video";
         }
         if (!videoRecord?.channel_name && orchestratorStatus.video?.channel_name) {
           upsertData.channel_name = orchestratorStatus.video.channel_name;
@@ -301,18 +303,23 @@ export async function GET(
             storage_path: storagePath || null,
             cached_at: videoRecord.cached_at,
           }
-        : transcriptSaved
-          ? {
-              title: (orchestratorStatus?.transcript as Record<string, unknown>)?.title as string || "Unknown Video",
-              channel_name: null,
-              duration_seconds: 0,
+        : (() => {
+            // Always return a video object so the UI has something to display
+            const orchTitle = (orchestratorStatus?.transcript as Record<string, unknown>)?.title as string
+              || orchestratorStatus?.video?.title as string;
+            return {
+              title: (orchTitle && orchTitle !== "(cached)") ? orchTitle : null,
+              channel_name: orchestratorStatus?.video?.channel_name || null,
+              duration_seconds: orchestratorStatus?.transcript?.duration
+                ? Math.round(Number(orchestratorStatus.transcript.duration))
+                : 0,
               thumbnail_url: `https://img.youtube.com/vi/${job.youtube_id}/hqdefault.jpg`,
-              has_transcript: true,
+              has_transcript: transcriptSaved,
               has_storage_file: false,
               storage_path: null,
-              cached_at: new Date().toISOString(),
-            }
-          : null,
+              cached_at: transcriptSaved ? new Date().toISOString() : null,
+            };
+          })(),
       orchestrator_status: orchestratorStatus,
       orchestrator_error: orchestratorError,
       related_jobs: relatedJobs || [],

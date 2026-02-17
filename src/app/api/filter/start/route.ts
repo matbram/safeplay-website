@@ -201,7 +201,7 @@ export async function POST(request: NextRequest) {
         .from("videos")
         .upsert({
           youtube_id: youtube_id,
-          title: data.video?.title || data.transcript.title || "Unknown Video",
+          title: (() => { const t = data.video?.title || data.transcript.title; return (t && t !== "(cached)") ? t : "Unknown Video"; })(),
           channel_name: data.video?.channel_name || null,
           duration_seconds: durationSeconds,
           thumbnail_url: `https://img.youtube.com/vi/${youtube_id}/hqdefault.jpg`,
@@ -300,7 +300,7 @@ export async function POST(request: NextRequest) {
         transcript: data.transcript,
         video: {
           youtube_id: youtube_id,
-          title: data.video?.title || data.transcript.title || "Unknown Video",
+          title: (() => { const t = data.video?.title || data.transcript.title; return (t && t !== "(cached)") ? t : "Unknown Video"; })(),
           channel_name: data.video?.channel_name || null,
           duration_seconds: durationSeconds,
           thumbnail_url: `https://img.youtube.com/vi/${youtube_id}/hqdefault.jpg`,

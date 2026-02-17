@@ -126,7 +126,7 @@ async function processCompletion(
     .from("videos")
     .upsert({
       youtube_id: jobRecord.youtube_id,
-      title: data.video?.title || data.transcript?.title || "Unknown Video",
+      title: (() => { const t = data.video?.title || data.transcript?.title; return (t && t !== "(cached)") ? t : "Unknown Video"; })(),
       channel_name: data.video?.channel_name || null,
       duration_seconds: durationSeconds,
       thumbnail_url: `https://img.youtube.com/vi/${jobRecord.youtube_id}/hqdefault.jpg`,
@@ -218,7 +218,7 @@ async function processCompletion(
     history_id: historyEntry?.id,
     video: {
       youtube_id: jobRecord.youtube_id,
-      title: data.video?.title || data.transcript?.title || "Unknown Video",
+      title: (() => { const t = data.video?.title || data.transcript?.title; return (t && t !== "(cached)") ? t : "Unknown Video"; })(),
       channel_name: data.video?.channel_name || null,
       duration_seconds: durationSeconds,
       thumbnail_url: `https://img.youtube.com/vi/${jobRecord.youtube_id}/hqdefault.jpg`,
