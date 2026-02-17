@@ -379,6 +379,20 @@ export async function POST(request: NextRequest) {
 
         // Delete associated video cache if exists
         if (job.youtube_id) {
+          // Delete the storage file first (e.g. youtube_id/audio.m4a)
+          try {
+            const { data: files } = await supabase.storage
+              .from("videos")
+              .list(job.youtube_id);
+            if (files && files.length > 0) {
+              await supabase.storage
+                .from("videos")
+                .remove(files.map((f) => `${job.youtube_id}/${f.name}`));
+            }
+          } catch {
+            // Storage cleanup is best-effort
+          }
+
           await supabase
             .from("videos")
             .delete()
@@ -427,7 +441,20 @@ export async function POST(request: NextRequest) {
           targetYoutubeId = job.youtube_id;
         }
 
-        // Delete existing cached video so orchestrator will reprocess
+        // Delete existing storage file and cached video so orchestrator will reprocess
+        try {
+          const { data: files } = await supabase.storage
+            .from("videos")
+            .list(targetYoutubeId);
+          if (files && files.length > 0) {
+            await supabase.storage
+              .from("videos")
+              .remove(files.map((f) => `${targetYoutubeId}/${f.name}`));
+          }
+        } catch {
+          // Storage cleanup is best-effort
+        }
+
         await supabase
           .from("videos")
           .delete()
