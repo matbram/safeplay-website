@@ -482,11 +482,11 @@ export async function POST(request: NextRequest) {
           orchHeaders["Authorization"] = `Bearer ${accessToken}`;
         }
 
-        // Call the orchestrator to start fresh
+        // Call the orchestrator to start fresh (force: true to bypass orchestrator cache)
         const orchResponse = await fetch(`${ORCHESTRATOR_URL}/api/filter`, {
           method: "POST",
           headers: orchHeaders,
-          body: JSON.stringify({ youtube_id: targetYoutubeId }),
+          body: JSON.stringify({ youtube_id: targetYoutubeId, force: true }),
         });
 
         const orchData = await orchResponse.json();
