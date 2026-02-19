@@ -262,7 +262,7 @@ export async function runJobMaintenance(): Promise<MaintenanceResults> {
           .delete()
           .eq("youtube_id", youtubeId);
 
-        // Reset the primary job
+        // Reset the primary job (update created_at so stale check doesn't immediately flag it)
         await supabase
           .from("filter_jobs")
           .update({
@@ -270,6 +270,7 @@ export async function runJobMaintenance(): Promise<MaintenanceResults> {
             progress: 0,
             error: null,
             completed_at: null,
+            created_at: new Date().toISOString(),
             auto_retry_count: retryCount + 1,
             last_auto_retry_at: new Date().toISOString(),
           })

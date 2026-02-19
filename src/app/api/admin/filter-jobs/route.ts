@@ -514,7 +514,7 @@ export async function POST(request: NextRequest) {
           .delete()
           .eq("youtube_id", targetYoutubeId);
 
-        // Reset the job status if it exists
+        // Reset the job status if it exists (update created_at so stale check doesn't immediately flag it)
         if (job_id) {
           await supabase
             .from("filter_jobs")
@@ -523,6 +523,7 @@ export async function POST(request: NextRequest) {
               progress: 0,
               error: null,
               completed_at: null,
+              created_at: new Date().toISOString(),
             })
             .eq("job_id", job_id);
         }
@@ -655,7 +656,7 @@ export async function POST(request: NextRequest) {
           .update({ transcript: null })
           .eq("youtube_id", targetYoutubeId);
 
-        // Reset job
+        // Reset job (update created_at so stale check doesn't immediately flag it)
         if (job_id) {
           await supabase
             .from("filter_jobs")
@@ -664,6 +665,7 @@ export async function POST(request: NextRequest) {
               progress: 0,
               error: null,
               completed_at: null,
+              created_at: new Date().toISOString(),
             })
             .eq("job_id", job_id);
         }
