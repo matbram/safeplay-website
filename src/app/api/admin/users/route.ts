@@ -1,6 +1,6 @@
 import { createServiceClient } from "@/lib/supabase/server";
 import { NextRequest, NextResponse } from "next/server";
-import { requireAdmin } from "@/lib/admin-auth";
+import { requireAdmin, logAdminAction } from "@/lib/admin-auth";
 
 export async function GET(request: NextRequest) {
   try {
@@ -101,6 +101,92 @@ export async function GET(request: NextRequest) {
     });
   } catch (error) {
     console.error("Admin users error:", error);
+    return NextResponse.json(
+      { error: "An unexpected error occurred" },
+      { status: 500 }
+    );
+  }
+}
+
+/**
+ * POST /api/admin/users
+ * Create a new user account with email + password.
+ * Optionally sets display_name and initial credit balance.
+ */
+export async function POST(request: NextRequest) {
+  try {
+    const { admin, response } = await requireAdmin(request, "manage_users");
+    if (!admin) return response;
+
+    const body = await request.json();
+    const { email, password, display_name } = body;
+
+    if (!email || !password) {
+      return NextResponse.json(
+        { error: "Email and password are required" },
+        { status: 400 }
+      );
+    }
+
+    if (password.length < 6) {
+      return NextResponse.json(
+        { error: "Password must be at least 6 characters" },
+        { status: 400 }
+      );
+    }
+
+    const supabase = createServiceClient();
+
+    // Create auth user via admin API
+    const { data: authData, error: authError } =
+      await supabase.auth.admin.createUser({
+        email,
+        password,
+        email_confirm: true, // Skip email verification
+      });
+
+    if (authError) {
+      return NextResponse.json(
+        { error: authError.message },
+        { status: 400 }
+      );
+    }
+
+    if (!authData.user) {
+      return NextResponse.json(
+        { error: "Failed to create user" },
+        { status: 500 }
+      );
+    }
+
+    const userId = authData.user.id;
+
+    // Update profile display_name if provided
+    if (display_name) {
+      await supabase
+        .from("profiles")
+        .update({ display_name })
+        .eq("id", userId);
+    }
+
+    await logAdminAction(
+      admin.id,
+      "create_user",
+      "user",
+      userId,
+      { email, display_name: display_name || null },
+      request
+    );
+
+    return NextResponse.json({
+      success: true,
+      user: {
+        id: userId,
+        email: authData.user.email,
+      },
+    });
+  } catch (error) {
+    console.error("Admin create user error:", error);
     return NextResponse.json(
       { error: "An unexpected error occurred" },
       { status: 500 }

@@ -12,9 +12,12 @@ import {
   Coins,
   AlertTriangle,
   Loader2,
+  CheckCircle,
+  XCircle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
@@ -32,6 +35,14 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { DataTable, Column } from "@/components/admin";
 import { useAdmin } from "@/contexts/admin-context";
@@ -83,6 +94,67 @@ export default function AdminUsersPage() {
     total: 0,
     totalPages: 0,
   });
+
+  // Create user state
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [createEmail, setCreateEmail] = useState("");
+  const [createPassword, setCreatePassword] = useState("");
+  const [createDisplayName, setCreateDisplayName] = useState("");
+  const [createLoading, setCreateLoading] = useState(false);
+
+  // Feedback
+  const [feedback, setFeedback] = useState<{
+    type: "success" | "error";
+    message: string;
+  } | null>(null);
+
+  useEffect(() => {
+    if (feedback) {
+      const timer = setTimeout(() => setFeedback(null), 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [feedback]);
+
+  const handleCreateUser = async () => {
+    if (!createEmail || !createPassword) {
+      setFeedback({ type: "error", message: "Email and password are required" });
+      return;
+    }
+    if (createPassword.length < 6) {
+      setFeedback({ type: "error", message: "Password must be at least 6 characters" });
+      return;
+    }
+
+    setCreateLoading(true);
+    try {
+      const response = await fetch("/api/admin/users", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: createEmail,
+          password: createPassword,
+          display_name: createDisplayName || undefined,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        setFeedback({ type: "success", message: `User ${createEmail} created successfully` });
+        setShowCreateModal(false);
+        setCreateEmail("");
+        setCreatePassword("");
+        setCreateDisplayName("");
+        fetchUsers();
+      } else {
+        setFeedback({ type: "error", message: data.error || "Failed to create user" });
+      }
+    } catch {
+      setFeedback({ type: "error", message: "An error occurred" });
+    } finally {
+      setCreateLoading(false);
+    }
+  };
 
   const fetchUsers = useCallback(async () => {
     try {
@@ -237,6 +309,25 @@ export default function AdminUsersPage() {
 
   return (
     <div className="space-y-6">
+      {/* Feedback */}
+      {feedback && (
+        <div
+          className={cn(
+            "flex items-center gap-3 p-4 rounded-lg",
+            feedback.type === "success"
+              ? "bg-success/10 text-success border border-success/20"
+              : "bg-error/10 text-error border border-error/20"
+          )}
+        >
+          {feedback.type === "success" ? (
+            <CheckCircle className="w-5 h-5" />
+          ) : (
+            <XCircle className="w-5 h-5" />
+          )}
+          <p>{feedback.message}</p>
+        </div>
+      )}
+
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
@@ -245,10 +336,18 @@ export default function AdminUsersPage() {
             Manage user accounts, subscriptions, and credits
           </p>
         </div>
-        <Button onClick={fetchUsers} variant="outline">
-          <RefreshCw className={cn("w-4 h-4 mr-2", loading && "animate-spin")} />
-          Refresh
-        </Button>
+        <div className="flex items-center gap-2">
+          {hasPermission("manage_users") && (
+            <Button onClick={() => setShowCreateModal(true)}>
+              <UserPlus className="w-4 h-4 mr-2" />
+              Create User
+            </Button>
+          )}
+          <Button onClick={fetchUsers} variant="outline">
+            <RefreshCw className={cn("w-4 h-4 mr-2", loading && "animate-spin")} />
+            Refresh
+          </Button>
+        </div>
       </div>
 
       {/* Filters */}
@@ -341,6 +440,68 @@ export default function AdminUsersPage() {
           )}
         </CardContent>
       </Card>
+
+      {/* Create User Modal */}
+      <Dialog open={showCreateModal} onOpenChange={setShowCreateModal}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Create New User</DialogTitle>
+            <DialogDescription>
+              Create a new user account with login credentials
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label>Email</Label>
+              <Input
+                type="email"
+                value={createEmail}
+                onChange={(e) => setCreateEmail(e.target.value)}
+                placeholder="user@example.com"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Password</Label>
+              <Input
+                type="password"
+                value={createPassword}
+                onChange={(e) => setCreatePassword(e.target.value)}
+                placeholder="Minimum 6 characters"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Display Name (optional)</Label>
+              <Input
+                value={createDisplayName}
+                onChange={(e) => setCreateDisplayName(e.target.value)}
+                placeholder="John Doe"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setShowCreateModal(false)}
+              disabled={createLoading}
+            >
+              Cancel
+            </Button>
+            <Button onClick={handleCreateUser} disabled={createLoading}>
+              {createLoading ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Creating...
+                </>
+              ) : (
+                <>
+                  <UserPlus className="w-4 h-4 mr-2" />
+                  Create User
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

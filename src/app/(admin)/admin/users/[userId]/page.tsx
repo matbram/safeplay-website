@@ -23,6 +23,10 @@ import {
   Loader2,
   CheckCircle,
   XCircle,
+  KeyRound,
+  Mail,
+  Lock,
+  Shield,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -58,6 +62,14 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { useAdmin } from "@/contexts/admin-context";
 import { formatDate, formatCurrency } from "@/lib/utils";
 import { cn } from "@/lib/utils";
@@ -184,6 +196,13 @@ export default function AdminUserDetailPage({
   const [notePinned, setNotePinned] = useState(false);
   const [noteLoading, setNoteLoading] = useState(false);
 
+  // Auth management state
+  const [showPasswordModal, setShowPasswordModal] = useState(false);
+  const [showEmailModal, setShowEmailModal] = useState(false);
+  const [newPassword, setNewPassword] = useState("");
+  const [newEmail, setNewEmail] = useState("");
+  const [authActionLoading, setAuthActionLoading] = useState(false);
+
   // Feedback
   const [feedback, setFeedback] = useState<{
     type: "success" | "error";
@@ -303,6 +322,44 @@ export default function AdminUserDetailPage({
     }
   };
 
+  const handleAuthAction = async (
+    action: string,
+    payload: Record<string, string> = {}
+  ) => {
+    setAuthActionLoading(true);
+    try {
+      const response = await fetch(
+        `/api/admin/users/${resolvedParams.userId}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action, ...payload }),
+        }
+      );
+
+      const data = await response.json();
+
+      if (response.ok) {
+        setFeedback({ type: "success", message: data.message });
+        // Close modals and reset fields
+        setShowPasswordModal(false);
+        setShowEmailModal(false);
+        setNewPassword("");
+        setNewEmail("");
+        fetchUser();
+      } else {
+        setFeedback({
+          type: "error",
+          message: data.error || "Action failed",
+        });
+      }
+    } catch {
+      setFeedback({ type: "error", message: "An error occurred" });
+    } finally {
+      setAuthActionLoading(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-[400px]">
@@ -402,6 +459,44 @@ export default function AdminUserDetailPage({
                 <StickyNote className="w-4 h-4 mr-2" />
                 Add Note
               </Button>
+              {hasPermission("manage_users") && (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="outline">
+                      <Shield className="w-4 h-4 mr-2" />
+                      Account
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuLabel>Auth Management</DropdownMenuLabel>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem
+                      onClick={() =>
+                        handleAuthAction("reset_password")
+                      }
+                      disabled={authActionLoading}
+                    >
+                      <KeyRound className="w-4 h-4 mr-2" />
+                      Send Password Reset Email
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      onClick={() => {
+                        setNewEmail(user.profile.email);
+                        setShowEmailModal(true);
+                      }}
+                    >
+                      <Mail className="w-4 h-4 mr-2" />
+                      Change Email
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      onClick={() => setShowPasswordModal(true)}
+                    >
+                      <Lock className="w-4 h-4 mr-2" />
+                      Set Password
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              )}
             </div>
           </div>
         </CardContent>
@@ -912,6 +1007,118 @@ export default function AdminUserDetailPage({
                 </>
               ) : (
                 "Add Note"
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Set Password Modal */}
+      <Dialog open={showPasswordModal} onOpenChange={setShowPasswordModal}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Set Password</DialogTitle>
+            <DialogDescription>
+              Set a new password for {user.profile.email}. The user will be able
+              to log in with this password immediately.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label>New Password</Label>
+              <Input
+                type="password"
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                placeholder="Minimum 6 characters"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setShowPasswordModal(false);
+                setNewPassword("");
+              }}
+              disabled={authActionLoading}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={() =>
+                handleAuthAction("update_password", { password: newPassword })
+              }
+              disabled={authActionLoading || newPassword.length < 6}
+            >
+              {authActionLoading ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Updating...
+                </>
+              ) : (
+                "Set Password"
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Change Email Modal */}
+      <Dialog open={showEmailModal} onOpenChange={setShowEmailModal}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Change Email</DialogTitle>
+            <DialogDescription>
+              Update the login email for this user account. This changes both
+              their auth email and profile email.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label>Current Email</Label>
+              <p className="text-sm text-muted-foreground">
+                {user.profile.email}
+              </p>
+            </div>
+            <div className="space-y-2">
+              <Label>New Email</Label>
+              <Input
+                type="email"
+                value={newEmail}
+                onChange={(e) => setNewEmail(e.target.value)}
+                placeholder="new@example.com"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setShowEmailModal(false);
+                setNewEmail("");
+              }}
+              disabled={authActionLoading}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={() =>
+                handleAuthAction("update_email", { email: newEmail })
+              }
+              disabled={
+                authActionLoading ||
+                !newEmail ||
+                newEmail === user.profile.email
+              }
+            >
+              {authActionLoading ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Updating...
+                </>
+              ) : (
+                "Update Email"
               )}
             </Button>
           </DialogFooter>
