@@ -233,10 +233,18 @@ export async function runJobMaintenance(): Promise<MaintenanceResults> {
           })
           .eq("id", primaryJob.id);
 
-        // Call orchestrator
+        // Call orchestrator (use service role key for server-to-server auth)
+        const orchHeaders: Record<string, string> = {
+          "Content-Type": "application/json",
+        };
+        const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+        if (serviceRoleKey) {
+          orchHeaders["Authorization"] = `Bearer ${serviceRoleKey}`;
+        }
+
         const orchResponse = await fetch(`${ORCHESTRATOR_URL}/api/filter`, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: orchHeaders,
           body: JSON.stringify({ youtube_id: youtubeId, force: true }),
           signal: AbortSignal.timeout(30000),
         });
