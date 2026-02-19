@@ -1,4 +1,5 @@
 import { createServiceClient } from "@/lib/supabase/server";
+import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 import { prepareTranscriptForCache } from "@/lib/transcript-utils";
 
 const ORCHESTRATOR_URL =
@@ -18,6 +19,47 @@ function log(message: string, data?: Record<string, unknown>) {
   const timestamp = new Date().toISOString();
   const dataStr = data ? ` | ${JSON.stringify(data)}` : "";
   console.log(`[${timestamp}] [JOB-MAINTENANCE] ${message}${dataStr}`);
+}
+
+/**
+ * Get a valid Supabase access token for orchestrator calls.
+ * Signs in as a service account user to get a real JWT that
+ * the orchestrator can validate via supabase.auth.getUser().
+ */
+async function getServiceAccessToken(): Promise<string | null> {
+  const email = process.env.SERVICE_ACCOUNT_EMAIL;
+  const password = process.env.SERVICE_ACCOUNT_PASSWORD;
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+  if (!email || !password || !supabaseUrl || !supabaseAnonKey) {
+    log("Service account credentials not configured", {
+      hasEmail: !!email,
+      hasPassword: !!password,
+    });
+    return null;
+  }
+
+  try {
+    const supabase = createSupabaseClient(supabaseUrl, supabaseAnonKey, {
+      auth: { autoRefreshToken: false, persistSession: false },
+    });
+
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    });
+
+    if (error || !data.session) {
+      log("Service account sign-in failed", { error: error?.message });
+      return null;
+    }
+
+    return data.session.access_token;
+  } catch (err) {
+    log("Service account token error", { error: String(err) });
+    return null;
+  }
 }
 
 export interface MaintenanceResults {
@@ -233,13 +275,21 @@ export async function runJobMaintenance(): Promise<MaintenanceResults> {
           })
           .eq("id", primaryJob.id);
 
-        // Call orchestrator (use shared SERVICE_API_KEY for server-to-server auth)
+        // Call orchestrator with auth token
+        // Priority: 1) Service account JWT (real Supabase user token)
+        //           2) SERVICE_API_KEY (orchestrator's service-to-service auth)
         const orchHeaders: Record<string, string> = {
           "Content-Type": "application/json",
         };
-        const serviceApiKey = process.env.SERVICE_API_KEY;
-        if (serviceApiKey) {
-          orchHeaders["Authorization"] = `Bearer ${serviceApiKey}`;
+        const accessToken = await getServiceAccessToken();
+        if (accessToken) {
+          orchHeaders["Authorization"] = `Bearer ${accessToken}`;
+        } else if (process.env.SERVICE_API_KEY) {
+          orchHeaders["Authorization"] = `Bearer ${process.env.SERVICE_API_KEY}`;
+        } else {
+          log("Warning: No auth token available for orchestrator call", {
+            youtube_id: youtubeId,
+          });
         }
 
         const orchResponse = await fetch(`${ORCHESTRATOR_URL}/api/filter`, {
