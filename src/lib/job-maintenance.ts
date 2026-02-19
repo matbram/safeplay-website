@@ -233,13 +233,13 @@ export async function runJobMaintenance(): Promise<MaintenanceResults> {
           })
           .eq("id", primaryJob.id);
 
-        // Call orchestrator (use service role key for server-to-server auth)
+        // Call orchestrator (use shared SERVICE_API_KEY for server-to-server auth)
         const orchHeaders: Record<string, string> = {
           "Content-Type": "application/json",
         };
-        const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-        if (serviceRoleKey) {
-          orchHeaders["Authorization"] = `Bearer ${serviceRoleKey}`;
+        const serviceApiKey = process.env.SERVICE_API_KEY;
+        if (serviceApiKey) {
+          orchHeaders["Authorization"] = `Bearer ${serviceApiKey}`;
         }
 
         const orchResponse = await fetch(`${ORCHESTRATOR_URL}/api/filter`, {
