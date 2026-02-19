@@ -129,6 +129,8 @@ export default function FilterJobsPage() {
   });
   const [cleaningUp, setCleaningUp] = useState(false);
   const [markingStale, setMarkingStale] = useState(false);
+  const [resettingRetries, setResettingRetries] = useState(false);
+  const [runningMaintenance, setRunningMaintenance] = useState(false);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState("");
@@ -246,6 +248,51 @@ export default function FilterJobsPage() {
     }
   };
 
+  const handleResetRetries = async () => {
+    setResettingRetries(true);
+    try {
+      const response = await fetch("/api/admin/filter-jobs", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "reset_all_retries" }),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        if (data.reset > 0) {
+          fetchJobs();
+        }
+      }
+    } catch (error) {
+      console.error("Reset retries failed:", error);
+    } finally {
+      setResettingRetries(false);
+    }
+  };
+
+  const handleRunMaintenance = async () => {
+    setRunningMaintenance(true);
+    try {
+      const response = await fetch("/api/admin/filter-jobs", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "run_maintenance" }),
+      });
+
+      if (response.ok) {
+        fetchJobs();
+      } else {
+        const data = await response.json();
+        alert(`Maintenance failed: ${data.error}`);
+      }
+    } catch (error) {
+      console.error("Run maintenance failed:", error);
+      alert("Maintenance failed. Check console for details.");
+    } finally {
+      setRunningMaintenance(false);
+    }
+  };
+
   if (!hasPermission("manage_users")) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[400px] gap-4">
@@ -268,12 +315,27 @@ export default function FilterJobsPage() {
             Monitor and manage video filtering pipeline
           </p>
         </div>
-        <Button onClick={fetchJobs} variant="outline" size="sm">
-          <RefreshCw
-            className={cn("w-4 h-4 mr-2", loading && "animate-spin")}
-          />
-          Refresh
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            onClick={handleRunMaintenance}
+            variant="outline"
+            size="sm"
+            disabled={runningMaintenance}
+          >
+            {runningMaintenance ? (
+              <Loader2 className="w-4 h-4 animate-spin mr-2" />
+            ) : (
+              <RotateCcw className="w-4 h-4 mr-2" />
+            )}
+            Run Maintenance Now
+          </Button>
+          <Button onClick={fetchJobs} variant="outline" size="sm">
+            <RefreshCw
+              className={cn("w-4 h-4 mr-2", loading && "animate-spin")}
+            />
+            Refresh
+          </Button>
+        </div>
       </div>
 
       {/* Resolved banner */}
@@ -317,17 +379,62 @@ export default function FilterJobsPage() {
               These jobs have failed {">"}3 automatic retries and require manual investigation
             </p>
           </div>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              className="border-error/30 text-error hover:bg-error/10"
+              onClick={handleResetRetries}
+              disabled={resettingRetries}
+            >
+              {resettingRetries ? (
+                <Loader2 className="w-4 h-4 animate-spin mr-1" />
+              ) : (
+                <RotateCcw className="w-4 h-4 mr-1" />
+              )}
+              Reset All Retries
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              className="border-error/30 text-error hover:bg-error/10"
+              onClick={() => {
+                setStatusFilter("needs_review");
+                setPage(1);
+              }}
+            >
+              <Eye className="w-4 h-4 mr-1" />
+              View Jobs
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {/* Reset retries banner (shown when there are unresolved failures but no needs_review) */}
+      {stats.failed_unresolved > 0 && stats.needs_review === 0 && (
+        <div className="flex items-center gap-3 p-4 rounded-lg bg-error/10 border border-error/20">
+          <RotateCcw className="w-5 h-5 text-error shrink-0" />
+          <div className="flex-1">
+            <p className="text-sm font-medium text-error">
+              {stats.failed_unresolved} unresolved failed job{stats.failed_unresolved !== 1 && "s"}
+            </p>
+            <p className="text-xs text-error/70 mt-0.5">
+              Reset retry counters to allow the maintenance job to retry them
+            </p>
+          </div>
           <Button
             variant="outline"
             size="sm"
             className="border-error/30 text-error hover:bg-error/10"
-            onClick={() => {
-              setStatusFilter("needs_review");
-              setPage(1);
-            }}
+            onClick={handleResetRetries}
+            disabled={resettingRetries}
           >
-            <Eye className="w-4 h-4 mr-1" />
-            View Jobs
+            {resettingRetries ? (
+              <Loader2 className="w-4 h-4 animate-spin mr-1" />
+            ) : (
+              <RotateCcw className="w-4 h-4 mr-1" />
+            )}
+            Reset All Retries
           </Button>
         </div>
       )}

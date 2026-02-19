@@ -2,6 +2,7 @@ import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdmin, logAdminAction } from "@/lib/admin-auth";
 import { prepareTranscriptForCache } from "@/lib/transcript-utils";
+import { runJobMaintenance } from "@/lib/job-maintenance";
 
 const ORCHESTRATOR_URL =
   process.env.ORCHESTRATION_API_URL ||
@@ -299,6 +300,49 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({
           success: true,
           marked: staleJobs.length,
+        });
+      }
+
+      case "reset_all_retries": {
+        // Reset all failed jobs so they can be auto-retried from scratch
+        const { data: retryableJobs } = await supabase
+          .from("filter_jobs")
+          .select("id, job_id, youtube_id")
+          .eq("status", "failed");
+
+        if (!retryableJobs || retryableJobs.length === 0) {
+          return NextResponse.json({ success: true, reset: 0 });
+        }
+
+        const { error: resetError } = await supabase
+          .from("filter_jobs")
+          .update({
+            auto_retry_count: 0,
+            needs_review: false,
+            last_auto_retry_at: null,
+            error: "Reset for retry",
+          })
+          .eq("status", "failed");
+
+        if (resetError) {
+          return NextResponse.json(
+            { error: `Reset failed: ${resetError.message}` },
+            { status: 500 }
+          );
+        }
+
+        await logAdminAction(
+          admin.id,
+          "reset_all_retries",
+          "filter_jobs",
+          "batch",
+          { reset: retryableJobs.length },
+          request
+        );
+
+        return NextResponse.json({
+          success: true,
+          reset: retryableJobs.length,
         });
       }
 
@@ -825,6 +869,24 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({
           success: true,
           transcript_saved: true,
+        });
+      }
+
+      case "run_maintenance": {
+        const maintenanceResults = await runJobMaintenance();
+
+        await logAdminAction(
+          admin.id,
+          "run_maintenance",
+          "filter_jobs",
+          "manual",
+          maintenanceResults as unknown as Record<string, unknown>,
+          request
+        );
+
+        return NextResponse.json({
+          success: true,
+          ...maintenanceResults,
         });
       }
 
