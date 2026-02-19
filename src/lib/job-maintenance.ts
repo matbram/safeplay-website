@@ -62,7 +62,28 @@ async function getServiceAccessToken(): Promise<string | null> {
   }
 }
 
+/**
+ * Build auth headers for orchestrator calls.
+ */
+async function getOrchestratorHeaders(): Promise<Record<string, string>> {
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+  };
+  const accessToken = await getServiceAccessToken();
+  if (accessToken) {
+    headers["Authorization"] = `Bearer ${accessToken}`;
+  } else if (process.env.SERVICE_API_KEY) {
+    headers["Authorization"] = `Bearer ${process.env.SERVICE_API_KEY}`;
+  } else {
+    log("Warning: No auth token available for orchestrator calls");
+  }
+  return headers;
+}
+
 export interface MaintenanceResults {
+  checked_in_progress: number;
+  completed_from_check: number;
+  failed_from_check: number;
   stale_marked_failed: number;
   duplicates_resolved: number;
   auto_retried: number;
@@ -72,15 +93,19 @@ export interface MaintenanceResults {
 
 /**
  * Core job maintenance logic.
- * 1. Marks stale jobs (processing > 30min) as failed
- * 2. Resolves duplicate failed jobs where the video is already cached
- * 3. Auto-retries failed jobs (up to MAX_AUTO_RETRIES)
- * 4. Escalates jobs with repeated failures to needs_review
+ * 1. Check on in-progress jobs by polling orchestrator (like the browser does)
+ * 2. Mark truly stale jobs (processing > 30min with no orchestrator response) as failed
+ * 3. Resolve duplicate failed jobs where the video is already cached
+ * 4. Auto-retry failed jobs (up to MAX_AUTO_RETRIES)
+ * 5. Escalate jobs with repeated failures to needs_review
  */
 export async function runJobMaintenance(): Promise<MaintenanceResults> {
   const supabase = createServiceClient();
   const now = Date.now();
   const results: MaintenanceResults = {
+    checked_in_progress: 0,
+    completed_from_check: 0,
+    failed_from_check: 0,
     stale_marked_failed: 0,
     duplicates_resolved: 0,
     auto_retried: 0,
@@ -89,7 +114,134 @@ export async function runJobMaintenance(): Promise<MaintenanceResults> {
   };
 
   // ─────────────────────────────────────────────────────
-  // Step 1: Mark stale jobs as failed
+  // Step 1: Check on in-progress jobs by polling orchestrator
+  // This is the same thing the user's browser does via /api/filter/status/[jobId]
+  // ─────────────────────────────────────────────────────
+  const { data: inProgressJobs } = await supabase
+    .from("filter_jobs")
+    .select("id, job_id, youtube_id, user_id")
+    .in("status", ["processing", "pending", "downloading", "transcribing"]);
+
+  if (inProgressJobs && inProgressJobs.length > 0) {
+    const orchHeaders = await getOrchestratorHeaders();
+
+    for (const job of inProgressJobs) {
+      results.checked_in_progress++;
+
+      try {
+        const statusResponse = await fetch(
+          `${ORCHESTRATOR_URL}/api/jobs/${job.job_id}`,
+          {
+            method: "GET",
+            headers: orchHeaders,
+            signal: AbortSignal.timeout(15000),
+          }
+        );
+
+        if (!statusResponse.ok) {
+          // Orchestrator doesn't know about this job or returned an error
+          // Don't mark failed yet — let the stale check handle it if it's old enough
+          const errData = await statusResponse.json().catch(() => ({}));
+          log("Orchestrator status check error", {
+            job_id: job.job_id,
+            youtube_id: job.youtube_id,
+            http_status: statusResponse.status,
+            error: errData.error,
+          });
+          continue;
+        }
+
+        const data = await statusResponse.json();
+
+        if (data.status === "completed" && data.transcript) {
+          // Job completed! Save the transcript just like the status endpoint does.
+          log("Job completed on orchestrator", {
+            job_id: job.job_id,
+            youtube_id: job.youtube_id,
+          });
+
+          try {
+            const cleanedTranscript = prepareTranscriptForCache(
+              data.transcript as Record<string, unknown>
+            );
+            const { error: upsertError } = await supabase
+              .from("videos")
+              .upsert(
+                {
+                  youtube_id: job.youtube_id,
+                  transcript: cleanedTranscript,
+                  title: (() => {
+                    const t =
+                      data.transcript?.title || data.video?.title;
+                    return t && t !== "(cached)" ? t : "Unknown Video";
+                  })(),
+                  thumbnail_url: `https://img.youtube.com/vi/${job.youtube_id}/hqdefault.jpg`,
+                  cached_at: new Date().toISOString(),
+                },
+                { onConflict: "youtube_id" }
+              );
+
+            if (!upsertError) {
+              await supabase
+                .from("filter_jobs")
+                .update({
+                  status: "completed",
+                  progress: 100,
+                  completed_at: new Date().toISOString(),
+                })
+                .eq("id", job.id);
+
+              results.completed_from_check++;
+              log("Job finalized from maintenance check", {
+                job_id: job.job_id,
+                youtube_id: job.youtube_id,
+              });
+            }
+          } catch (err) {
+            log("Failed to save transcript from check", {
+              job_id: job.job_id,
+              error: String(err),
+            });
+          }
+        } else if (data.status === "failed") {
+          // Orchestrator says job failed
+          await supabase
+            .from("filter_jobs")
+            .update({
+              status: "failed",
+              error: data.error || "Failed on orchestrator",
+            })
+            .eq("id", job.id);
+
+          results.failed_from_check++;
+          log("Job failed on orchestrator", {
+            job_id: job.job_id,
+            youtube_id: job.youtube_id,
+            error: data.error,
+          });
+        } else {
+          // Still processing — update progress and leave it alone
+          await supabase
+            .from("filter_jobs")
+            .update({
+              status: data.status || "processing",
+              progress: data.progress || 0,
+            })
+            .eq("id", job.id);
+        }
+      } catch (err) {
+        // Network error polling orchestrator — leave the job alone for now
+        log("Failed to poll orchestrator for job", {
+          job_id: job.job_id,
+          error: String(err),
+        });
+      }
+    }
+  }
+
+  // ─────────────────────────────────────────────────────
+  // Step 2: Mark stale jobs as failed
+  // Only jobs that survived Step 1 (orchestrator unreachable or unknown)
   // ─────────────────────────────────────────────────────
   const staleThreshold = new Date(now - STALE_THRESHOLD_MS).toISOString();
 
@@ -124,7 +276,7 @@ export async function runJobMaintenance(): Promise<MaintenanceResults> {
   }
 
   // ─────────────────────────────────────────────────────
-  // Step 2: Resolve duplicate failed jobs
+  // Step 3: Resolve duplicate failed jobs
   // ─────────────────────────────────────────────────────
   const { data: failedJobs } = await supabase
     .from("filter_jobs")
@@ -182,7 +334,7 @@ export async function runJobMaintenance(): Promise<MaintenanceResults> {
     }
 
     // ─────────────────────────────────────────────────────
-    // Step 3 & 4: Auto-retry or escalate
+    // Step 4 & 5: Auto-retry or escalate
     // ─────────────────────────────────────────────────────
     const unresolvedJobs = failedJobs.filter(
       (j) => !resolvedIds.has(j.youtube_id) && !j.needs_review
@@ -196,6 +348,8 @@ export async function runJobMaintenance(): Promise<MaintenanceResults> {
       }
       jobsByVideo.get(job.youtube_id)!.push(job);
     }
+
+    const orchHeaders = await getOrchestratorHeaders();
 
     for (const [youtubeId, videoJobs] of jobsByVideo) {
       const primaryJob = videoJobs.reduce((best, j) =>
@@ -234,14 +388,10 @@ export async function runJobMaintenance(): Promise<MaintenanceResults> {
         ? new Date(primaryJob.last_auto_retry_at).getTime()
         : 0;
       if (now - lastRetry < RETRY_COOLDOWN_MS) {
-        log("Skipping retry (cooldown)", {
-          youtube_id: youtubeId,
-          last_retry_ago_ms: now - lastRetry,
-        });
         continue;
       }
 
-      // Attempt auto-retry
+      // Attempt auto-retry — same as clicking retry in the admin UI
       try {
         // Clear cached video data
         try {
@@ -262,7 +412,7 @@ export async function runJobMaintenance(): Promise<MaintenanceResults> {
           .delete()
           .eq("youtube_id", youtubeId);
 
-        // Reset the primary job (update created_at so stale check doesn't immediately flag it)
+        // Reset the job
         await supabase
           .from("filter_jobs")
           .update({
@@ -276,23 +426,7 @@ export async function runJobMaintenance(): Promise<MaintenanceResults> {
           })
           .eq("id", primaryJob.id);
 
-        // Call orchestrator with auth token
-        // Priority: 1) Service account JWT (real Supabase user token)
-        //           2) SERVICE_API_KEY (orchestrator's service-to-service auth)
-        const orchHeaders: Record<string, string> = {
-          "Content-Type": "application/json",
-        };
-        const accessToken = await getServiceAccessToken();
-        if (accessToken) {
-          orchHeaders["Authorization"] = `Bearer ${accessToken}`;
-        } else if (process.env.SERVICE_API_KEY) {
-          orchHeaders["Authorization"] = `Bearer ${process.env.SERVICE_API_KEY}`;
-        } else {
-          log("Warning: No auth token available for orchestrator call", {
-            youtube_id: youtubeId,
-          });
-        }
-
+        // Call orchestrator — same request as the admin retry
         const orchResponse = await fetch(`${ORCHESTRATOR_URL}/api/filter`, {
           method: "POST",
           headers: orchHeaders,
@@ -319,7 +453,7 @@ export async function runJobMaintenance(): Promise<MaintenanceResults> {
           continue;
         }
 
-        // Update job with new orchestrator job_id
+        // Update job with orchestrator response
         await supabase
           .from("filter_jobs")
           .update({
@@ -382,6 +516,7 @@ export async function runJobMaintenance(): Promise<MaintenanceResults> {
           youtube_id: youtubeId,
           attempt: retryCount + 1,
           new_job_id: orchData.job_id,
+          status: orchData.status,
           siblings_cleaned: siblingIds.length,
         });
       } catch (err) {
