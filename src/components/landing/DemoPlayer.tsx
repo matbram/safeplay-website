@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { Shield, Volume2, VolumeX, Play, Pause, RotateCcw } from "lucide-react";
 import { cn } from "@/lib/utils";
+import type { PlayerSettings } from "@/lib/launch-mode";
 
 // Types for the demo player
 interface MuteInterval {
@@ -142,12 +143,21 @@ const SAFE_WORDS = new Set([
 interface DemoPlayerProps {
   videoId?: string;
   className?: string;
+  playerSettings?: PlayerSettings | null;
 }
 
 export function DemoPlayer({
   videoId = "73_1biulkYk",
   className,
+  playerSettings,
 }: DemoPlayerProps) {
+  // Use dynamic settings with hardcoded fallbacks
+  const bleepFrequency = playerSettings?.bleep_frequency ?? BLEEP_FREQUENCY;
+  const bleepVolume = playerSettings?.bleep_volume ?? BLEEP_VOLUME;
+  const fadeBuffer = playerSettings?.premute_padding_ms != null
+    ? playerSettings.premute_padding_ms / 1000
+    : FADE_BUFFER;
+  const defaultFilterMode = playerSettings?.default_filter_mode ?? "mute";
   const playerRef = useRef<YTPlayer | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const checkIntervalRef = useRef<number | null>(null);
@@ -162,15 +172,23 @@ export function DemoPlayer({
   const isFadingRef = useRef(false); // Track fade state like Chrome extension
   const isBleepingRef = useRef(false); // Track bleep state separately
   const filterEnabledRef = useRef(true);
-  const filterModeRef = useRef<FilterMode>("mute");
+  const filterModeRef = useRef<FilterMode>(defaultFilterMode);
   const muteIntervalsRef = useRef<MuteInterval[]>([]);
+
+  // Refs for dynamic player settings (used in interval callbacks)
+  const bleepFrequencyRef = useRef(bleepFrequency);
+  const bleepVolumeRef = useRef(bleepVolume);
+  const fadeBufferRef = useRef(fadeBuffer);
+  bleepFrequencyRef.current = bleepFrequency;
+  bleepVolumeRef.current = bleepVolume;
+  fadeBufferRef.current = fadeBuffer;
 
   const [isReady, setIsReady] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [filterEnabled, setFilterEnabledState] = useState(true);
-  const [filterMode, setFilterModeState] = useState<FilterMode>("mute");
+  const [filterMode, setFilterModeState] = useState<FilterMode>(defaultFilterMode);
   const [isMuted, setIsMutedState] = useState(false);
   const [muteIntervals, setMuteIntervalsState] = useState<MuteInterval[]>([]);
 
@@ -367,12 +385,12 @@ export function DemoPlayer({
     // Create main oscillator for classic censor bleep
     const oscillator = bleepContextRef.current.createOscillator();
     oscillator.type = "sine";
-    oscillator.frequency.value = BLEEP_FREQUENCY;
+    oscillator.frequency.value = bleepFrequencyRef.current;
 
     // Create second oscillator slightly detuned for richness (like Chrome extension)
     const oscillator2 = bleepContextRef.current.createOscillator();
     oscillator2.type = "sine";
-    oscillator2.frequency.value = BLEEP_FREQUENCY * 1.001;
+    oscillator2.frequency.value = bleepFrequencyRef.current * 1.001;
 
     // Create mixer for second oscillator
     const mixer = bleepContextRef.current.createGain();
@@ -387,7 +405,7 @@ export function DemoPlayer({
     const now = bleepContextRef.current.currentTime;
     bleepGainRef.current.gain.setValueAtTime(0, now);
     bleepGainRef.current.gain.linearRampToValueAtTime(
-      BLEEP_VOLUME,
+      bleepVolumeRef.current,
       now + BLEEP_ATTACK
     );
 
@@ -448,11 +466,12 @@ export function DemoPlayer({
   const findActiveInterval = useCallback(
     (time: number): MuteInterval | null => {
       const intervals = muteIntervalsRef.current;
+      const buffer = fadeBufferRef.current;
       for (const interval of intervals) {
         if (time >= interval.start && time <= interval.end) {
           return interval;
         }
-        if (interval.start > time + FADE_BUFFER) break;
+        if (interval.start > time + buffer) break;
       }
       return null;
     },
@@ -463,12 +482,13 @@ export function DemoPlayer({
   const findApproachingInterval = useCallback(
     (time: number): MuteInterval | null => {
       const intervals = muteIntervalsRef.current;
+      const buffer = fadeBufferRef.current;
       for (const interval of intervals) {
-        const fadeStartTime = interval.start - FADE_BUFFER;
+        const fadeStartTime = interval.start - buffer;
         if (time >= fadeStartTime && time < interval.start) {
           return interval;
         }
-        if (interval.start > time + FADE_BUFFER) break;
+        if (interval.start > time + buffer) break;
       }
       return null;
     },

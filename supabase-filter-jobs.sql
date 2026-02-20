@@ -13,6 +13,9 @@ CREATE TABLE IF NOT EXISTS public.filter_jobs (
   progress INTEGER DEFAULT 0,
   credits_used INTEGER DEFAULT 0,
   error TEXT,
+  auto_retry_count INTEGER DEFAULT 0,
+  needs_review BOOLEAN DEFAULT false,
+  last_auto_retry_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ DEFAULT NOW(),
   completed_at TIMESTAMPTZ
 );
@@ -121,3 +124,17 @@ CREATE POLICY "Users can delete own family profiles"
 
 -- Create indexes for family_profiles
 CREATE INDEX IF NOT EXISTS idx_family_profiles_owner_id ON public.family_profiles(owner_id);
+
+-- Migration: Add auto-retry tracking columns to filter_jobs (safe to run on existing tables)
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'filter_jobs' AND column_name = 'auto_retry_count') THEN
+    ALTER TABLE public.filter_jobs ADD COLUMN auto_retry_count INTEGER DEFAULT 0;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'filter_jobs' AND column_name = 'needs_review') THEN
+    ALTER TABLE public.filter_jobs ADD COLUMN needs_review BOOLEAN DEFAULT false;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'filter_jobs' AND column_name = 'last_auto_retry_at') THEN
+    ALTER TABLE public.filter_jobs ADD COLUMN last_auto_retry_at TIMESTAMPTZ;
+  END IF;
+END $$;

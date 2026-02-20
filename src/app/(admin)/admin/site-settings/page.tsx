@@ -17,7 +17,10 @@ import {
   ExternalLink,
   ToggleLeft,
   ToggleRight,
+  SlidersHorizontal,
+  ArrowRight,
 } from "lucide-react";
+import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -314,6 +317,31 @@ export default function SiteSettingsPage() {
                   Enable Pre-Launch
                 </>
               )}
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Launch Mode Settings Link */}
+      <Card className="border border-border">
+        <CardContent className="pt-6">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
+                <SlidersHorizontal className="w-5 h-5 text-primary" />
+              </div>
+              <div>
+                <h3 className="font-semibold">Launch Mode Settings</h3>
+                <p className="text-sm text-muted-foreground">
+                  Configure landing page video categories and player settings
+                </p>
+              </div>
+            </div>
+            <Button asChild variant="outline">
+              <Link href="/admin/site-settings/launch-mode">
+                Configure
+                <ArrowRight className="w-4 h-4 ml-2" />
+              </Link>
             </Button>
           </div>
         </CardContent>

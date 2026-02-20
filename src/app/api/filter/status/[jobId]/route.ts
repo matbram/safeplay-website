@@ -7,6 +7,36 @@ import { prepareTranscriptForCache } from "@/lib/transcript-utils";
 
 const ORCHESTRATOR_URL = process.env.ORCHESTRATION_API_URL || "https://safeplay-orchestrator-80308222868.us-central1.run.app";
 
+/**
+ * When a job completes, clean up duplicate failed jobs for the same video.
+ * Since the video is now cached, those failed jobs are resolved.
+ */
+async function resolveSiblingFailedJobs(youtubeId: string, completedJobId: string) {
+  try {
+    const supabase = createServiceClient();
+    const { data: siblings, error } = await supabase
+      .from("filter_jobs")
+      .select("id, job_id")
+      .eq("youtube_id", youtubeId)
+      .eq("status", "failed")
+      .neq("job_id", completedJobId);
+
+    if (error || !siblings || siblings.length === 0) return;
+
+    await supabase
+      .from("filter_jobs")
+      .delete()
+      .in("id", siblings.map((s) => s.id));
+
+    log("auto-resolve", `Resolved ${siblings.length} sibling failed jobs`, {
+      youtubeId,
+      resolvedJobIds: siblings.map((s) => s.job_id),
+    });
+  } catch (err) {
+    console.error("Failed to resolve sibling jobs:", err);
+  }
+}
+
 // Logging helper for consistent format
 function log(context: string, message: string, data?: Record<string, unknown>) {
   const timestamp = new Date().toISOString();
@@ -241,7 +271,7 @@ export async function GET(
         .from("videos")
         .upsert({
           youtube_id: jobRecord.youtube_id,
-          title: data.video?.title || data.transcript.title || "Unknown Video",
+          title: (() => { const t = data.video?.title || data.transcript.title; return (t && t !== "(cached)") ? t : "Unknown Video"; })(),
           channel_name: data.video?.channel_name || null,
           duration_seconds: durationSeconds,
           thumbnail_url: `https://img.youtube.com/vi/${jobRecord.youtube_id}/hqdefault.jpg`,
@@ -354,6 +384,9 @@ export async function GET(
         error: jobUpdateError?.message
       });
 
+      // Auto-resolve any duplicate failed jobs for this video
+      await resolveSiblingFailedJobs(jobRecord.youtube_id, jobId);
+
       log(requestId, "=== Job finalized ===", { creditsUsed: creditCost, newBalance, historyId: historyEntry?.id });
 
       return NextResponse.json({
@@ -363,7 +396,7 @@ export async function GET(
         transcript: data.transcript,
         video: {
           youtube_id: jobRecord.youtube_id,
-          title: data.video?.title || data.transcript.title || "Unknown Video",
+          title: (() => { const t = data.video?.title || data.transcript.title; return (t && t !== "(cached)") ? t : "Unknown Video"; })(),
           channel_name: data.video?.channel_name || null,
           duration_seconds: durationSeconds,
           thumbnail_url: `https://img.youtube.com/vi/${jobRecord.youtube_id}/hqdefault.jpg`,

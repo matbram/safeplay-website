@@ -6,9 +6,26 @@ export interface LaunchModeSettings {
   allow_signups: boolean;
 }
 
+export interface VideoCategory {
+  id: string;
+  label: string;
+  icon: string;
+  enabled: boolean;
+  order: number;
+}
+
+export interface PlayerSettings {
+  premute_padding_ms: number;
+  postmute_padding_ms: number;
+  merge_threshold_ms: number;
+  default_filter_mode: "mute" | "bleep";
+  bleep_frequency: number;
+  bleep_volume: number;
+}
+
 /**
  * GET /api/settings/launch-mode
- * Public endpoint to check if site is in pre-launch mode
+ * Public endpoint to check launch status, video categories, and player settings
  */
 export async function GET() {
   try {
@@ -16,26 +33,26 @@ export async function GET() {
 
     const { data, error } = await supabase
       .from("site_settings")
-      .select("value")
-      .eq("key", "launch_mode")
-      .single();
+      .select("key, value")
+      .in("key", ["launch_mode", "launch_video_categories", "launch_player_settings"]);
 
-    if (error) {
-      // If no setting exists, default to pre-launch mode
-      if (error.code === "PGRST116") {
-        return NextResponse.json({
-          is_pre_launch: true,
-          allow_signups: false,
-        });
-      }
-      throw error;
-    }
+    if (error) throw error;
 
-    const settings = data.value as LaunchModeSettings;
+    // Build settings map from results
+    const settingsMap: Record<string, unknown> = {};
+    data?.forEach((row) => {
+      settingsMap[row.key] = row.value;
+    });
+
+    const launchMode = settingsMap.launch_mode as LaunchModeSettings | undefined;
+    const videoCategories = settingsMap.launch_video_categories as VideoCategory[] | undefined;
+    const playerSettings = settingsMap.launch_player_settings as PlayerSettings | undefined;
 
     return NextResponse.json({
-      is_pre_launch: settings.is_pre_launch ?? true,
-      allow_signups: settings.allow_signups ?? false,
+      is_pre_launch: launchMode?.is_pre_launch ?? true,
+      allow_signups: launchMode?.allow_signups ?? false,
+      video_categories: videoCategories ?? null,
+      player_settings: playerSettings ?? null,
     });
   } catch (error) {
     console.error("Failed to fetch launch mode:", error);
@@ -43,6 +60,8 @@ export async function GET() {
     return NextResponse.json({
       is_pre_launch: true,
       allow_signups: false,
+      video_categories: null,
+      player_settings: null,
     });
   }
 }

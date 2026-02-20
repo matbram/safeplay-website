@@ -8,12 +8,15 @@ import { Input } from "@/components/ui/input";
 import { ThemeToggle } from "@/components/ui/theme-toggle";
 import { DemoVideoSelector } from "./DemoVideoSelector";
 import { cn } from "@/lib/utils";
+import type { VideoCategory, PlayerSettings } from "@/lib/launch-mode";
 
 interface PreLaunchLandingProps {
   className?: string;
+  videoCategories?: VideoCategory[] | null;
+  playerSettings?: PlayerSettings | null;
 }
 
-export function PreLaunchLanding({ className }: PreLaunchLandingProps) {
+export function PreLaunchLanding({ className, videoCategories, playerSettings }: PreLaunchLandingProps) {
   const [email, setEmail] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
@@ -184,7 +187,10 @@ export function PreLaunchLanding({ className }: PreLaunchLandingProps) {
 
           {/* Interactive Demo Player */}
           <div id="demo" className="mt-16 lg:mt-20 max-w-5xl mx-auto animate-fade-in-up stagger-5">
-            <DemoVideoSelector />
+            <DemoVideoSelector
+              videoCategories={videoCategories}
+              playerSettings={playerSettings}
+            />
           </div>
 
           {/* Social Proof */}
