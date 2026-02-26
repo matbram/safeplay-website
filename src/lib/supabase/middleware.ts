@@ -114,6 +114,7 @@ export async function updateSession(request: NextRequest) {
     "/signup",
     "/forgot-password",
     "/reset-password",
+    "/extension/auth",
   ];
   const isAlwaysAllowed = alwaysAllowedRoutes.some((route) =>
     pathname.startsWith(route)
