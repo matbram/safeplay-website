@@ -24,8 +24,6 @@ import {
   ArrowRight,
   Zap,
   Users,
-  Building,
-  Star,
   Loader2,
   Plus,
   Sparkles,
@@ -72,17 +70,10 @@ const creditPacks = [
 
 const plans = [
   {
-    id: "free",
-    name: "Free",
-    price_cents: 0,
-    credits_per_month: 30,
-    features: ["30 credits/month", "Mute or bleep", "Re-watch free"],
-    icon: Star,
-  },
-  {
     id: "individual",
     name: "Individual",
     price_cents: 999,
+    annual_price_cents: 9990,
     credits_per_month: 750,
     features: ["750 credits/month", "Custom word filters", "Up to 3 profiles", "Email support"],
     icon: Zap,
@@ -92,39 +83,26 @@ const plans = [
     id: "family",
     name: "Family",
     price_cents: 1999,
+    annual_price_cents: 19990,
     credits_per_month: 1500,
     features: ["1,500 credits/month", "Up to 10 profiles", "Parental controls", "Priority support"],
     icon: Users,
   },
-  {
-    id: "organization",
-    name: "Organization",
-    price_cents: 4999,
-    credits_per_month: 3750,
-    features: ["3,750 credits/month", "Unlimited members", "Admin dashboard", "Dedicated support"],
-    icon: Building,
-  },
 ];
 
 const planQuotas: Record<string, number> = {
-  free: 30,
   individual: 750,
   family: 1500,
-  organization: 3750,
 };
 
 const planPrices: Record<string, number> = {
-  free: 0,
   individual: 999,
   family: 1999,
-  organization: 4999,
 };
 
 const planNames: Record<string, string> = {
-  free: "Free",
   individual: "Individual",
   family: "Family",
-  organization: "Organization",
 };
 
 function BillingContent() {
@@ -174,8 +152,8 @@ function BillingContent() {
     );
   }
 
-  const currentPlan = user?.subscription_tier || "free";
-  const totalCredits = planQuotas[currentPlan] || 30;
+  const currentPlan = user?.subscription_tier || "individual";
+  const totalCredits = planQuotas[currentPlan] || 750;
   const usedCredits = credits?.used_this_period || 0;
   const availableCredits = credits?.available_credits || 0;
   const rolloverCredits = credits?.rollover_credits || 0;
@@ -331,15 +309,13 @@ function BillingContent() {
                 <Button onClick={() => setShowUpgradeDialog(true)}>
                   Change Plan
                 </Button>
-                {currentPlan !== "free" && (
-                  <Button
-                    variant="outline"
-                    className="text-error hover:text-error"
-                    onClick={() => setShowCancelDialog(true)}
-                  >
-                    Cancel Subscription
-                  </Button>
-                )}
+                <Button
+                  variant="outline"
+                  className="text-error hover:text-error"
+                  onClick={() => setShowCancelDialog(true)}
+                >
+                  Cancel Subscription
+                </Button>
               </div>
             </CardContent>
           </Card>
@@ -406,32 +382,22 @@ function BillingContent() {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              {currentPlan === "free" ? (
-                <div className="text-center py-6">
-                  <CreditCard className="w-12 h-12 mx-auto text-muted-foreground mb-3" />
-                  <p className="text-muted-foreground">No payment method required for free plan</p>
-                  <Button className="mt-4" onClick={() => setShowUpgradeDialog(true)}>
-                    Upgrade to add payment method
-                  </Button>
-                </div>
-              ) : (
-                <div className="flex items-center justify-between p-4 rounded-lg border">
-                  <div className="flex items-center gap-4">
-                    <div className="w-12 h-8 rounded bg-gradient-to-r from-blue-600 to-blue-800 flex items-center justify-center text-white text-xs font-bold uppercase">
-                      Card
-                    </div>
-                    <div>
-                      <p className="font-medium">Payment method on file</p>
-                      <p className="text-sm text-muted-foreground">
-                        Managed through Stripe
-                      </p>
-                    </div>
+              <div className="flex items-center justify-between p-4 rounded-lg border">
+                <div className="flex items-center gap-4">
+                  <div className="w-12 h-8 rounded bg-gradient-to-r from-blue-600 to-blue-800 flex items-center justify-center text-white text-xs font-bold uppercase">
+                    Card
                   </div>
-                  <Button variant="outline" size="sm">
-                    Update
-                  </Button>
+                  <div>
+                    <p className="font-medium">Payment method on file</p>
+                    <p className="text-sm text-muted-foreground">
+                      Managed through Stripe
+                    </p>
+                  </div>
                 </div>
-              )}
+                <Button variant="outline" size="sm">
+                  Update
+                </Button>
+              </div>
             </CardContent>
           </Card>
 
@@ -630,8 +596,7 @@ function BillingContent() {
             <div className="p-4 rounded-lg bg-warning-light">
               <p className="text-sm text-warning font-medium">
                 If you cancel, your subscription will remain active until{" "}
-                {formatDate(periodEnd)}, then you&apos;ll be
-                downgraded to the Free plan.
+                {formatDate(periodEnd)}, then your access will end.
               </p>
             </div>
 
@@ -640,7 +605,7 @@ function BillingContent() {
               <ul className="space-y-1">
                 <li className="text-sm text-muted-foreground flex items-center gap-2">
                   <span className="w-1.5 h-1.5 rounded-full bg-error" />
-                  {totalCredits} monthly credits (down to 30)
+                  {totalCredits} monthly credits
                 </li>
                 <li className="text-sm text-muted-foreground flex items-center gap-2">
                   <span className="w-1.5 h-1.5 rounded-full bg-error" />

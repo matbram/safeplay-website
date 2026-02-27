@@ -6,7 +6,7 @@ import { CTA } from "@/components/landing/CTA";
 
 export const metadata = {
   title: "Pricing - SafePlay",
-  description: "Choose the right SafePlay plan for you. From free to enterprise, we have a plan that fits your needs.",
+  description: "Choose the right SafePlay plan for you. Individual and Family plans with monthly and annual billing options.",
 };
 
 export default function PricingPage() {

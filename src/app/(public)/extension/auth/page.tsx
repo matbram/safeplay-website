@@ -79,7 +79,7 @@ function ExtensionAuthContent() {
             id: profile.id,
             email: profile.email,
             display_name: profile.display_name,
-            subscription_tier: profile.subscription_tier || "free",
+            subscription_tier: profile.subscription_tier || "individual",
             subscription_status: profile.subscription_status || "active",
             credits: {
               available: credits?.available_credits ?? 0,
@@ -96,10 +96,10 @@ function ExtensionAuthContent() {
       try {
         const availableCredits = userProfile?.credits?.available ?? 0;
         const usedThisPeriod = userProfile?.credits?.used_this_period ?? 0;
-        const tier = userProfile?.subscription_tier || "free";
+        const tier = userProfile?.subscription_tier || "individual";
 
         // Plan allocation based on tier
-        const planAllocation = tier === "free" ? 30 : tier === "individual" ? 750 : tier === "family" ? 1500 : 3750;
+        const planAllocation = tier === "family" ? 1500 : 750;
         const percentConsumed = planAllocation > 0 ? Math.round((usedThisPeriod / planAllocation) * 100) : 0;
 
         // Build the auth payload matching extension expectations exactly
