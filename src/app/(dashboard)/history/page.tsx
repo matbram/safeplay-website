@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -14,6 +15,14 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
   Play,
   Search,
   Download,
@@ -25,6 +34,8 @@ import {
   ChevronLeft,
   ChevronRight,
   Loader2,
+  Sparkles,
+  AlertCircle,
 } from "lucide-react";
 import { formatDuration, formatDate } from "@/lib/utils";
 import { useUser } from "@/contexts/user-context";
@@ -47,6 +58,7 @@ interface HistoryItem {
 
 export default function HistoryPage() {
   const { user, credits, loading: userLoading } = useUser();
+  const router = useRouter();
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
@@ -55,6 +67,11 @@ export default function HistoryPage() {
   const [selectedItems, setSelectedItems] = useState<string[]>([]);
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 10;
+
+  // Re-transcribe confirmation modal state
+  const [retranscribeTarget, setRetranscribeTarget] = useState<HistoryItem | null>(null);
+  const [retranscribing, setRetranscribing] = useState(false);
+  const [retranscribeError, setRetranscribeError] = useState("");
 
   // Stats calculated from real data
   const [stats, setStats] = useState({
@@ -223,6 +240,52 @@ export default function HistoryPage() {
     if (!error) {
       setHistory(history.filter(item => !selectedItems.includes(item.id)));
       setSelectedItems([]);
+    }
+  };
+
+  // Free re-transcribe of an already-filtered video. Useful when ElevenLabs (or the
+  // transcription pipeline) produces a sub-par transcript — e.g. after engine upgrades.
+  const handleRetranscribe = async () => {
+    if (!retranscribeTarget?.videos?.youtube_id || retranscribing) return;
+    setRetranscribing(true);
+    setRetranscribeError("");
+
+    try {
+      const response = await fetch("/api/filter/retry", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "retranscribe",
+          youtube_id: retranscribeTarget.videos.youtube_id,
+        }),
+      });
+
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to re-transcribe");
+      }
+
+      // If the orchestrator returned a cached completion, bounce back to /filter? with no jobId —
+      // otherwise jump into the processing view for the new job.
+      if (data.status === "completed") {
+        setRetranscribeTarget(null);
+        router.push("/filter");
+        return;
+      }
+
+      if (data.job_id) {
+        setRetranscribeTarget(null);
+        router.push(`/filter?retry_job=${encodeURIComponent(data.job_id)}`);
+        return;
+      }
+
+      throw new Error("Unexpected response");
+    } catch (err) {
+      setRetranscribeError(
+        err instanceof Error ? err.message : "Failed to re-transcribe"
+      );
+    } finally {
+      setRetranscribing(false);
     }
   };
 
@@ -445,6 +508,20 @@ export default function HistoryPage() {
                         Rewatch
                       </a>
                     </Button>
+                    {item.videos?.youtube_id && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        title="Re-transcribe with the latest engine (free)"
+                        onClick={() => {
+                          setRetranscribeError("");
+                          setRetranscribeTarget(item);
+                        }}
+                      >
+                        <Sparkles className="w-4 h-4 mr-1" />
+                        Re-transcribe
+                      </Button>
+                    )}
                     <Button
                       variant="ghost"
                       size="sm"
@@ -478,6 +555,93 @@ export default function HistoryPage() {
           )}
         </CardContent>
       </Card>
+
+      {/* Re-transcribe confirmation dialog */}
+      <Dialog
+        open={!!retranscribeTarget}
+        onOpenChange={(open) => {
+          if (!open && !retranscribing) {
+            setRetranscribeTarget(null);
+            setRetranscribeError("");
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Sparkles className="w-5 h-5 text-primary" />
+              Re-transcribe this video?
+            </DialogTitle>
+            <DialogDescription>
+              We&apos;ll run this video through the latest transcription engine. Helpful if the current transcript missed words or feels off.
+            </DialogDescription>
+          </DialogHeader>
+
+          {retranscribeTarget?.videos && (
+            <div className="p-3 rounded-lg bg-muted/50 flex gap-3">
+              <div className="relative w-20 h-12 bg-muted rounded overflow-hidden flex-shrink-0">
+                {retranscribeTarget.videos.thumbnail_url && (
+                  <img
+                    src={retranscribeTarget.videos.thumbnail_url}
+                    alt={retranscribeTarget.videos.title}
+                    className="w-full h-full object-cover"
+                  />
+                )}
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium line-clamp-2">
+                  {retranscribeTarget.videos.title}
+                </p>
+                {retranscribeTarget.videos.channel_name && (
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    {retranscribeTarget.videos.channel_name}
+                  </p>
+                )}
+              </div>
+            </div>
+          )}
+
+          <div className="flex items-center gap-2 text-sm text-success">
+            <Coins className="w-4 h-4" />
+            <span>Free — you already paid for this video.</span>
+          </div>
+
+          {retranscribeError && (
+            <div className="flex items-start gap-2 p-3 rounded-lg bg-error-light text-error">
+              <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+              <span className="text-sm">{retranscribeError}</span>
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                if (!retranscribing) {
+                  setRetranscribeTarget(null);
+                  setRetranscribeError("");
+                }
+              }}
+              disabled={retranscribing}
+            >
+              Cancel
+            </Button>
+            <Button onClick={handleRetranscribe} disabled={retranscribing}>
+              {retranscribing ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Starting...
+                </>
+              ) : (
+                <>
+                  <Sparkles className="w-4 h-4 mr-2" />
+                  Re-transcribe
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Pagination */}
       {totalPages > 1 && (

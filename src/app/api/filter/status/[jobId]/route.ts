@@ -210,13 +210,17 @@ export async function GET(
     if (data.status === "completed" && data.transcript) {
       log(requestId, "=== Job completed - finalizing ===");
 
+      // Retranscribe jobs are free (user already paid during the original filter).
+      const isRetranscribe = !!jobRecord.is_retranscribe;
+
       // Try to get duration from multiple possible locations in orchestrator response
       let durationSeconds = data.transcript?.duration || data.video?.duration || data.duration || 0;
       log(requestId, "Duration from orchestrator", {
         transcriptDuration: data.transcript?.duration,
         videoDuration: data.video?.duration,
         topLevelDuration: data.duration,
-        result: durationSeconds
+        result: durationSeconds,
+        isRetranscribe,
       });
 
       // If orchestrator didn't provide duration, fetch from YouTube
@@ -226,10 +230,10 @@ export async function GET(
         log(requestId, "YouTube duration result", { durationSeconds });
       }
 
-      const creditCost = calculateCreditCost(durationSeconds);
-      log(requestId, "Credit calculation", { durationSeconds, creditCost });
+      const creditCost = isRetranscribe ? 0 : calculateCreditCost(durationSeconds);
+      log(requestId, "Credit calculation", { durationSeconds, creditCost, isRetranscribe });
 
-      // Check user's credit balance
+      // Check user's credit balance (only meaningful for paid jobs).
       const { data: creditBalance, error: balanceError } = await supabase
         .from("credit_balances")
         .select("*")
@@ -244,8 +248,8 @@ export async function GET(
 
       const availableCredits = creditBalance?.available_credits || 0;
 
-      // Check credits
-      if (creditCost > availableCredits) {
+      // Check credits (retranscribes bypass this since they're free).
+      if (!isRetranscribe && creditCost > availableCredits) {
         log(requestId, "INSUFFICIENT CREDITS - marking job as failed", {
           required: creditCost,
           available: availableCredits
@@ -307,47 +311,53 @@ export async function GET(
         });
       }
 
-      // Video cached successfully — now deduct credits
-      const newBalance = availableCredits - creditCost;
-      const newUsed = (creditBalance?.used_this_period || 0) + creditCost;
+      // Video cached successfully — deduct credits only for paid (non-retranscribe) jobs.
+      const newBalance = isRetranscribe ? availableCredits : availableCredits - creditCost;
+      const newUsed = isRetranscribe
+        ? (creditBalance?.used_this_period || 0)
+        : (creditBalance?.used_this_period || 0) + creditCost;
 
-      log(requestId, "Deducting credits", {
-        creditCost,
-        oldBalance: availableCredits,
-        newBalance,
-        oldUsed: creditBalance?.used_this_period,
-        newUsed
-      });
+      if (!isRetranscribe) {
+        log(requestId, "Deducting credits", {
+          creditCost,
+          oldBalance: availableCredits,
+          newBalance,
+          oldUsed: creditBalance?.used_this_period,
+          newUsed
+        });
 
-      const { error: creditUpdateError } = await supabase
-        .from("credit_balances")
-        .update({
-          available_credits: newBalance,
-          used_this_period: newUsed,
-        })
-        .eq("user_id", auth.user.id);
+        const { error: creditUpdateError } = await supabase
+          .from("credit_balances")
+          .update({
+            available_credits: newBalance,
+            used_this_period: newUsed,
+          })
+          .eq("user_id", auth.user.id);
 
-      log(requestId, "Credit update result", {
-        success: !creditUpdateError,
-        error: creditUpdateError?.message
-      });
+        log(requestId, "Credit update result", {
+          success: !creditUpdateError,
+          error: creditUpdateError?.message
+        });
 
-      // Record credit transaction
-      const { data: txData, error: txError } = await supabase.from("credit_transactions").insert({
-        user_id: auth.user.id,
-        amount: -creditCost,
-        balance_after: newBalance,
-        type: "filter",
-        description: `Filtered video: ${data.video?.title || jobRecord.youtube_id}`,
-      }).select().single();
+        // Record credit transaction
+        const { data: txData, error: txError } = await supabase.from("credit_transactions").insert({
+          user_id: auth.user.id,
+          amount: -creditCost,
+          balance_after: newBalance,
+          type: "filter",
+          description: `Filtered video: ${data.video?.title || jobRecord.youtube_id}`,
+        }).select().single();
 
-      log(requestId, "Transaction insert result", {
-        success: !txError,
-        txId: txData?.id,
-        error: txError?.message
-      });
+        log(requestId, "Transaction insert result", {
+          success: !txError,
+          txId: txData?.id,
+          error: txError?.message
+        });
+      } else {
+        log(requestId, "Retranscribe completed - skipping credit deduction");
+      }
 
-      // Record in filter history
+      // Record in filter history (retranscribes log a zero-credit entry for traceability).
       const { data: historyEntry, error: historyError } = await supabase
         .from("filter_history")
         .insert({

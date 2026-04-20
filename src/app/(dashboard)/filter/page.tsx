@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
+import { useSearchParams, useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -20,9 +21,13 @@ import {
   Plus,
   X,
   RefreshCw,
+  RotateCcw,
 } from "lucide-react";
 import { cn, extractYouTubeId, formatDuration } from "@/lib/utils";
 import { useUser } from "@/contexts/user-context";
+
+// If progress hasn't moved in this long, surface a "restart" option to the user.
+const STUCK_THRESHOLD_MS = 90 * 1000;
 
 type FilterStatus = "idle" | "loading" | "preview" | "processing" | "success" | "error";
 
@@ -67,6 +72,8 @@ interface SSEEventData {
 
 export default function FilterPage() {
   const { credits, loading: userLoading, refetch: refetchUser } = useUser();
+  const searchParams = useSearchParams();
+  const router = useRouter();
   const [url, setUrl] = useState("");
   const [status, setStatus] = useState<FilterStatus>("idle");
   const [filterType, setFilterType] = useState<"mute" | "bleep">("mute");
@@ -78,15 +85,20 @@ export default function FilterPage() {
   const [videoPreview, setVideoPreview] = useState<VideoPreview | null>(null);
   const [filterResult, setFilterResult] = useState<FilterResult | null>(null);
   const [jobId, setJobId] = useState<string | null>(null);
+  const [stuck, setStuck] = useState(false);
+  const [retrying, setRetrying] = useState(false);
   const pollingRef = useRef<NodeJS.Timeout | null>(null);
   const eventSourceRef = useRef<EventSource | null>(null);
   const sseReconnectAttempts = useRef(0);
   const maxSSEReconnectAttempts = 5;
+  const lastProgressAtRef = useRef<number>(Date.now());
+  const lastProgressValueRef = useRef<number>(0);
+  const stuckCheckRef = useRef<NodeJS.Timeout | null>(null);
 
   // Get real user credits
   const userCredits = credits?.available_credits || 0;
 
-  // Cleanup SSE and polling on unmount
+  // Cleanup SSE, polling, and stuck-watchdog on unmount
   useEffect(() => {
     return () => {
       if (pollingRef.current) {
@@ -95,8 +107,57 @@ export default function FilterPage() {
       if (eventSourceRef.current) {
         eventSourceRef.current.close();
       }
+      if (stuckCheckRef.current) {
+        clearInterval(stuckCheckRef.current);
+      }
     };
   }, []);
+
+  // Progress watchdog: if progress hasn't changed in STUCK_THRESHOLD_MS while processing,
+  // flag the job as stuck so the user can restart it with a fresh orchestrator job.
+  useEffect(() => {
+    if (status !== "processing") {
+      if (stuckCheckRef.current) {
+        clearInterval(stuckCheckRef.current);
+        stuckCheckRef.current = null;
+      }
+      setStuck(false);
+      return;
+    }
+
+    if (progress !== lastProgressValueRef.current) {
+      lastProgressValueRef.current = progress;
+      lastProgressAtRef.current = Date.now();
+      setStuck(false);
+    }
+
+    if (stuckCheckRef.current) return;
+    stuckCheckRef.current = setInterval(() => {
+      if (Date.now() - lastProgressAtRef.current > STUCK_THRESHOLD_MS) {
+        setStuck(true);
+      }
+    }, 5000);
+  }, [status, progress]);
+
+  // Deep-link support: /filter?retry_job=<jobId> jumps straight into the processing view
+  // for an already-queued job (used by the history page's Re-transcribe flow).
+  useEffect(() => {
+    const retryJob = searchParams?.get("retry_job");
+    if (!retryJob || jobId === retryJob) return;
+
+    setJobId(retryJob);
+    setStatus("processing");
+    setProgress(0);
+    setProgressMessage("Re-transcribing with the latest engine...");
+    setError("");
+    lastProgressAtRef.current = Date.now();
+    lastProgressValueRef.current = 0;
+    startSSE(retryJob);
+
+    // Strip the param so a refresh doesn't re-trigger this.
+    router.replace("/filter");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
 
   const handleUrlSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -473,7 +534,15 @@ export default function FilterPage() {
       eventSourceRef.current.close();
       eventSourceRef.current = null;
     }
+    if (stuckCheckRef.current) {
+      clearInterval(stuckCheckRef.current);
+      stuckCheckRef.current = null;
+    }
     sseReconnectAttempts.current = 0;
+    lastProgressAtRef.current = Date.now();
+    lastProgressValueRef.current = 0;
+    setStuck(false);
+    setRetrying(false);
     setUrl("");
     setStatus("idle");
     setVideoPreview(null);
@@ -483,6 +552,55 @@ export default function FilterPage() {
     setProgressMessage("");
     setError("");
     setCustomWords([]);
+  };
+
+  // Cancel the stuck job and start a fresh orchestrator job for the same video.
+  // Used when ElevenLabs (or the pipeline) hangs mid-transcribe.
+  const handleRestartStuckJob = async () => {
+    if (!jobId || retrying) return;
+    setRetrying(true);
+    setError("");
+
+    // Tear down the current SSE/polling before we swap to a new job_id.
+    if (pollingRef.current) {
+      clearInterval(pollingRef.current);
+      pollingRef.current = null;
+    }
+    if (eventSourceRef.current) {
+      eventSourceRef.current.close();
+      eventSourceRef.current = null;
+    }
+
+    try {
+      const response = await fetch("/api/filter/retry", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "restart", job_id: jobId }),
+      });
+
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to restart job");
+      }
+
+      const newJobId = data.job_id || jobId;
+      setJobId(newJobId);
+      setProgress(0);
+      setProgressMessage("Restarting...");
+      setStuck(false);
+      lastProgressAtRef.current = Date.now();
+      lastProgressValueRef.current = 0;
+
+      if (data.status === "completed") {
+        handleCompletion(data);
+      } else {
+        startSSE(newJobId);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to restart job");
+    } finally {
+      setRetrying(false);
+    }
   };
 
   if (userLoading) {
@@ -822,6 +940,36 @@ export default function FilterPage() {
                       <p className="text-xs text-muted-foreground mt-1">{videoPreview.channel_name}</p>
                     )}
                   </div>
+                </div>
+              </div>
+            )}
+            {stuck && (
+              <div className="p-4 rounded-lg bg-warning-light text-left border border-warning/30 space-y-3">
+                <div className="flex items-start gap-2">
+                  <AlertCircle className="w-5 h-5 text-warning shrink-0 mt-0.5" />
+                  <div className="flex-1">
+                    <p className="text-sm font-medium text-warning">
+                      This is taking longer than usual
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Transcription may be stuck. You can cancel this job and start a fresh one — you won&apos;t be charged twice.
+                    </p>
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={handleRestartStuckJob}
+                    disabled={retrying || !jobId}
+                  >
+                    {retrying ? (
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    ) : (
+                      <RotateCcw className="w-4 h-4 mr-2" />
+                    )}
+                    Restart job
+                  </Button>
                 </div>
               </div>
             )}

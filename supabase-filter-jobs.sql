@@ -137,4 +137,9 @@ BEGIN
   IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'filter_jobs' AND column_name = 'last_auto_retry_at') THEN
     ALTER TABLE public.filter_jobs ADD COLUMN last_auto_retry_at TIMESTAMPTZ;
   END IF;
+  -- Retranscribe flag: jobs created by user-initiated "Re-transcribe" on already-filtered videos.
+  -- These are free (user already paid) and bypass credit deduction on completion.
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'filter_jobs' AND column_name = 'is_retranscribe') THEN
+    ALTER TABLE public.filter_jobs ADD COLUMN is_retranscribe BOOLEAN DEFAULT false;
+  END IF;
 END $$;
