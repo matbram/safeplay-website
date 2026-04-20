@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -71,6 +71,21 @@ interface SSEEventData {
 }
 
 export default function FilterPage() {
+  // useSearchParams requires a Suspense boundary at prerender time under Next.js 16.
+  return (
+    <Suspense
+      fallback={
+        <div className="flex items-center justify-center min-h-[400px]">
+          <Loader2 className="w-8 h-8 animate-spin text-primary" />
+        </div>
+      }
+    >
+      <FilterPageContent />
+    </Suspense>
+  );
+}
+
+function FilterPageContent() {
   const { credits, loading: userLoading, refetch: refetchUser } = useUser();
   const searchParams = useSearchParams();
   const router = useRouter();
