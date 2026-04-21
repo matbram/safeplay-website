@@ -333,19 +333,42 @@ export async function POST(request: NextRequest) {
       const etaSeconds = computeEstimate(durationForEta);
       log(requestId, "ETA computed", { durationForEta, etaSeconds });
 
-      const { error: jobError } = await supabase.from("filter_jobs").upsert({
+      const baseJobRow = {
         job_id: data.job_id,
-        orchestrator_job_id: data.job_id,
         user_id: auth.user.id,
         youtube_id: youtube_id,
         filter_type: filter_type || "mute",
         custom_words: custom_words || [],
         status: "processing",
-        eta_seconds: etaSeconds,
         created_at: new Date().toISOString(),
+      };
+
+      let { error: jobError } = await supabase.from("filter_jobs").upsert({
+        ...baseJobRow,
+        orchestrator_job_id: data.job_id,
+        eta_seconds: etaSeconds,
       });
 
+      // Fallback for environments where the orchestrator_job_id / eta_seconds
+      // migration hasn't been applied yet. Without this, the row would never
+      // be created and subsequent /api/filter/status and /api/filter/events
+      // lookups would 404.
+      if (jobError) {
+        log(requestId, "Job save with new columns failed, retrying with legacy schema", {
+          error: jobError.message,
+        });
+        const fallback = await supabase.from("filter_jobs").upsert(baseJobRow);
+        jobError = fallback.error;
+      }
+
       log(requestId, "Job save result", { success: !jobError, error: jobError?.message });
+
+      if (jobError) {
+        return NextResponse.json(
+          { error: "Failed to save filter job record", error_code: "JOB_PERSIST_FAILED" },
+          { status: 500 }
+        );
+      }
 
       return NextResponse.json({
         status: "processing",
