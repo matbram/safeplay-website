@@ -30,7 +30,7 @@ The website is a thin client for the orchestrator service. ElevenLabs itself liv
 
 ### Database
 
-`filter_jobs` — id (UUID PK), job_id (text unique, orchestrator ID), user_id, youtube_id, filter_type, custom_words, status, progress, credits_used, error, auto_retry_count, needs_review, last_auto_retry_at, created_at, completed_at. **New column:** `is_retranscribe BOOLEAN DEFAULT false`.
+`filter_jobs` — id (UUID PK), job_id (text unique, stable client-facing id), `orchestrator_job_id` (text, current orchestrator-side id — may differ from job_id after auto-restart), user_id, youtube_id, filter_type, custom_words, status, progress, credits_used, error, auto_retry_count, needs_review, last_auto_retry_at, `eta_seconds` (expected completion time at creation), created_at, completed_at, is_retranscribe.
 
 `videos` — youtube_id (unique), title/channel/duration/thumbnail, `transcript` (JSONB), `storage_path` (to the audio file in Supabase Storage), cached_at.
 
@@ -125,3 +125,44 @@ Auth is per-user (session cookie or bearer). Ownership is strictly enforced agai
 - **Telemetry** — add a counter on retry usage (mode=restart vs retranscribe) so you can tell if stuck transcriptions are increasing over time.
 - **Orchestrator-side cleanup** — when a user restarts a stuck job, consider firing a best-effort `DELETE /api/jobs/{oldJobId}` to the orchestrator so it stops transcribing audio nobody will read. Today we just abandon it.
 - **Retranscribe across engine versions** — once the orchestrator exposes a transcript engine version, surface it in history UI so users know which version they're on and whether a re-transcribe would gain anything.
+
+---
+
+## 7. Auto-restart on ETA overrun (silent watchdog)
+
+### Why
+
+ElevenLabs is a black box. The orchestrator only learns a transcription is done when ElevenLabs fires a webhook back. If the webhook is dropped (or ElevenLabs internally wedges), the orchestrator has no signal — the job sits "in progress" forever. Users on YouTube with the Chrome extension have no way to notice or recover from this: they don't see our `/filter` page, so the manual "Restart" button never applies. Before this change the only rescue was the 30-minute stale sweep, which marks jobs failed and never auto-retries fast enough.
+
+The website is the only layer with the state to detect this (start time, expected duration, retry count), so the fix lives here.
+
+### How
+
+1. **ETA at creation.** `POST /api/filter/start` resolves the video's duration (orchestrator → cached `videos` → YouTube) and stores `filter_jobs.eta_seconds = max(25, round(20 + duration/13))` — the same formula the Chrome extension uses for its countdown. Retranscribes also get an ETA.
+2. **Stable client-facing id.** Added `filter_jobs.orchestrator_job_id`. `filter_jobs.job_id` is now treated as permanently stable — it's whatever we returned to the extension from `/api/filter/start`. `orchestrator_job_id` holds the id the orchestrator currently knows this job by. When an auto-restart swaps the underlying orchestrator job, only `orchestrator_job_id` changes. The extension's polling URL (`/api/filter/status/<job_id>`) never moves. Existing rows are backfilled with `orchestrator_job_id = job_id` by the migration.
+3. **Proxy routes use `orchestrator_job_id`.** `/api/filter/status/[jobId]`, `/api/filter/status/[jobId]/stream`, `/api/filter/events/[jobId]`, `/api/admin/filter-jobs/[jobId]`, and the admin `save_transcript` action all look up the row by the stable `job_id` but call the orchestrator using `orchestrator_job_id`.
+4. **Watchdog.** `sweepEtaOverruns()` in `src/lib/job-maintenance.ts` runs every 30s (wired up alongside the existing 10-minute sweep in `src/instrumentation.ts`). It queries active jobs with `now - created_at > eta_seconds + 30` and, for each, calls the shared `restartJob` helper.
+5. **Shared restart path.** `src/lib/job-restart.ts` is the single place that resets a row and calls the orchestrator with `force:true`. Both the user-initiated `POST /api/filter/retry?action=restart` and the watchdog go through it. It's race-safe: the reset is a conditional UPDATE guarded by the expected `orchestrator_job_id`, so two concurrent restarters can't double-fire.
+6. **Cap + escalate.** The watchdog bumps `auto_retry_count` on every auto-restart. At `MAX_AUTO_RETRIES = 3` it stops restarting, marks the row `failed` with `needs_review=true`, and leaves a clear error message. User-initiated restarts reset the counter to 0.
+7. **Silent by design.** No UI surface on auto-restart — the user is on YouTube waiting for their video. Progress resets to 0, then climbs again on the fresh underlying job. If all 3 retries fail, the user still has manual recovery via the existing history page.
+
+### Files touched (this feature)
+
+| File | Change |
+|---|---|
+| `supabase-filter-jobs.sql` | `ADD COLUMN IF NOT EXISTS eta_seconds INTEGER`, `orchestrator_job_id TEXT` (backfilled from `job_id`). |
+| `src/lib/eta.ts` | **New.** `computeEstimate()` and `isEtaOverrun()` helpers. |
+| `src/lib/job-restart.ts` | **New.** Shared race-safe restart path used by both user-facing retry and the watchdog. |
+| `src/lib/job-maintenance.ts` | Added `sweepEtaOverruns()`. Existing auto-retry path now swaps `orchestrator_job_id` (not `job_id`). In-progress poll uses `orchestrator_job_id`. |
+| `src/instrumentation.ts` | Second `setInterval` at 30s for the ETA watchdog. |
+| `src/app/api/filter/start/route.ts` | Compute and persist `eta_seconds`; initialize `orchestrator_job_id = job_id`. |
+| `src/app/api/filter/retry/route.ts` | `handleRestart` delegates to `restartJob`. Retranscribe rows get `eta_seconds` + `orchestrator_job_id`. |
+| `src/app/api/filter/status/[jobId]/route.ts` | Poll orchestrator using `orchestrator_job_id`. |
+| `src/app/api/filter/status/[jobId]/stream/route.ts` | Same. |
+| `src/app/api/filter/events/[jobId]/route.ts` | Same. |
+| `src/app/api/admin/filter-jobs/route.ts` | Admin retry/retranscribe updates `orchestrator_job_id` (not `job_id`). Admin `save_transcript` polls with `orchestrator_job_id`. |
+| `src/app/api/admin/filter-jobs/[jobId]/route.ts` | Poll with `orchestrator_job_id`. |
+
+### Chrome extension
+
+No changes required. The extension polls the same `job_id` URL it was given; everything else happens server-side.

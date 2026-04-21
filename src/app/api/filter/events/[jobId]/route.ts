@@ -73,7 +73,7 @@ export async function GET(
   const supabase = createServiceClient();
   const { data: jobRecord, error: jobError } = await supabase
     .from("filter_jobs")
-    .select("job_id")
+    .select("job_id, orchestrator_job_id")
     .eq("job_id", jobId)
     .eq("user_id", auth.user.id)
     .single();
@@ -90,7 +90,8 @@ export async function GET(
     upstreamHeaders["Authorization"] = `Bearer ${auth.accessToken}`;
   }
 
-  const upstreamUrl = `${ORCHESTRATOR_URL}/api/jobs/${jobId}/stream`;
+  const orchestratorJobId: string = jobRecord.orchestrator_job_id || jobRecord.job_id;
+  const upstreamUrl = `${ORCHESTRATOR_URL}/api/jobs/${orchestratorJobId}/stream`;
   log(requestId, "Connecting to orchestrator SSE", { url: upstreamUrl });
 
   let upstream: Response;

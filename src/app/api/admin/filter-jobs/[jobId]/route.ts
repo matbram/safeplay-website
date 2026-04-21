@@ -142,8 +142,10 @@ export async function GET(
       orchHeaders["Authorization"] = `Bearer ${accessToken}`;
     }
 
+    const orchestratorJobId: string = job.orchestrator_job_id || job.job_id;
+
     try {
-      const orchResponse = await fetch(`${ORCHESTRATOR_URL}/api/jobs/${jobId}`, {
+      const orchResponse = await fetch(`${ORCHESTRATOR_URL}/api/jobs/${orchestratorJobId}`, {
         method: "GET",
         headers: orchHeaders,
         signal: AbortSignal.timeout(5000),

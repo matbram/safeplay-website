@@ -556,13 +556,14 @@ export async function POST(request: NextRequest) {
           );
         }
 
-        // Update or create the job record
+        // Update or create the job record. Keep client-facing job_id stable;
+        // only swap orchestrator_job_id so polling URLs keep working.
         if (job_id) {
           await supabase
             .from("filter_jobs")
             .update({
               status: orchData.status || "processing",
-              job_id: orchData.job_id || job_id,
+              orchestrator_job_id: orchData.job_id || job_id,
             })
             .eq("job_id", job_id);
         }
@@ -589,12 +590,12 @@ export async function POST(request: NextRequest) {
 
             if (!upsertError) {
               transcriptSaved = true;
-              // Mark job as completed
+              // Mark job as completed (match on the stable client-facing job_id)
               if (job_id) {
                 await supabase
                   .from("filter_jobs")
                   .update({ status: "completed", progress: 100, completed_at: new Date().toISOString() })
-                  .eq("job_id", orchData.job_id || job_id);
+                  .eq("job_id", job_id);
               }
             }
           } catch (err) {
@@ -703,7 +704,7 @@ export async function POST(request: NextRequest) {
             .from("filter_jobs")
             .update({
               status: orchData.status || "processing",
-              job_id: orchData.job_id || job_id,
+              orchestrator_job_id: orchData.job_id || job_id,
             })
             .eq("job_id", job_id);
         }
@@ -729,7 +730,7 @@ export async function POST(request: NextRequest) {
                 await supabase
                   .from("filter_jobs")
                   .update({ status: "completed", progress: 100, completed_at: new Date().toISOString() })
-                  .eq("job_id", orchData.job_id || job_id);
+                  .eq("job_id", job_id);
               }
             }
           } catch (err) {
@@ -788,7 +789,8 @@ export async function POST(request: NextRequest) {
           saveHeaders["Authorization"] = `Bearer ${saveToken}`;
         }
 
-        const saveOrchResponse = await fetch(`${ORCHESTRATOR_URL}/api/jobs/${job_id}`, {
+        const saveOrchestratorJobId: string = saveJob.orchestrator_job_id || saveJob.job_id;
+        const saveOrchResponse = await fetch(`${ORCHESTRATOR_URL}/api/jobs/${saveOrchestratorJobId}`, {
           method: "GET",
           headers: saveHeaders,
           signal: AbortSignal.timeout(10000),

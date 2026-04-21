@@ -102,8 +102,15 @@ export async function GET(
       });
     }
 
-    // Poll orchestrator for current status with retry logic
-    log(requestId, "Polling orchestrator for status", { url: ORCHESTRATOR_URL, jobId });
+    // Poll orchestrator using the current orchestrator-side id. The client-facing
+    // `jobId` (the URL param) stays stable across auto-restarts; the orchestrator
+    // id is what actually identifies the underlying job.
+    const orchestratorJobId: string = jobRecord.orchestrator_job_id || jobRecord.job_id;
+    log(requestId, "Polling orchestrator for status", {
+      url: ORCHESTRATOR_URL,
+      jobId,
+      orchestratorJobId,
+    });
 
     const headers: Record<string, string> = {};
 
@@ -114,7 +121,7 @@ export async function GET(
     let response: Response;
     try {
       response = await fetchWithRetry(
-        `${ORCHESTRATOR_URL}/api/jobs/${jobId}`,
+        `${ORCHESTRATOR_URL}/api/jobs/${orchestratorJobId}`,
         { method: "GET", headers },
         {
           maxAttempts: 3,

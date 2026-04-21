@@ -3,6 +3,8 @@ import { createServiceClient } from "@/lib/supabase/server";
 import { authenticateRequest } from "@/lib/auth-helper";
 import { fetchWithRetry, isRetryableError } from "@/lib/retry";
 import { prepareTranscriptForCache } from "@/lib/transcript-utils";
+import { computeEstimate } from "@/lib/eta";
+import { fetchYouTubeDuration } from "@/lib/youtube";
 
 const ORCHESTRATOR_URL = process.env.ORCHESTRATION_API_URL || "https://safeplay-orchestrator-80308222868.us-central1.run.app";
 
@@ -314,13 +316,32 @@ export async function POST(request: NextRequest) {
     if (data.status === "processing" && data.job_id) {
       log(requestId, "Processing started - saving job", { jobId: data.job_id });
 
+      // Resolve video duration for ETA calculation. Prefer orchestrator → cached video → YouTube.
+      let durationForEta: number =
+        data.transcript?.duration ||
+        data.video?.duration ||
+        data.duration ||
+        cachedVideo?.duration_seconds ||
+        0;
+      if (!durationForEta && youtube_id) {
+        try {
+          durationForEta = await fetchYouTubeDuration(youtube_id);
+        } catch (err) {
+          log(requestId, "ETA duration lookup failed", { error: String(err) });
+        }
+      }
+      const etaSeconds = computeEstimate(durationForEta);
+      log(requestId, "ETA computed", { durationForEta, etaSeconds });
+
       const { error: jobError } = await supabase.from("filter_jobs").upsert({
         job_id: data.job_id,
+        orchestrator_job_id: data.job_id,
         user_id: auth.user.id,
         youtube_id: youtube_id,
         filter_type: filter_type || "mute",
         custom_words: custom_words || [],
         status: "processing",
+        eta_seconds: etaSeconds,
         created_at: new Date().toISOString(),
       });
 

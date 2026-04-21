@@ -319,7 +319,9 @@ export async function GET(
       });
     }
 
-    // Connect to orchestrator's SSE endpoint
+    // Connect to orchestrator's SSE endpoint using the current orchestrator-side id.
+    const orchestratorJobId: string = jobRecord.orchestrator_job_id || jobRecord.job_id;
+
     const headers: Record<string, string> = {
       "Accept": "text/event-stream",
     };
@@ -328,12 +330,12 @@ export async function GET(
       headers["Authorization"] = `Bearer ${auth.accessToken}`;
     }
 
-    log(requestId, "Connecting to orchestrator SSE", { url: `${ORCHESTRATOR_URL}/api/jobs/${jobId}/stream` });
+    log(requestId, "Connecting to orchestrator SSE", { url: `${ORCHESTRATOR_URL}/api/jobs/${orchestratorJobId}/stream` });
 
     let orchestratorResponse: Response;
     try {
       orchestratorResponse = await fetchWithRetry(
-        `${ORCHESTRATOR_URL}/api/jobs/${jobId}/stream`,
+        `${ORCHESTRATOR_URL}/api/jobs/${orchestratorJobId}/stream`,
         { headers },
         {
           maxAttempts: 3,

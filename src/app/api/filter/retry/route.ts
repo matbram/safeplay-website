@@ -3,6 +3,9 @@ import { createServiceClient } from "@/lib/supabase/server";
 import { authenticateRequest } from "@/lib/auth-helper";
 import { fetchWithRetry, isRetryableError } from "@/lib/retry";
 import { prepareTranscriptForCache } from "@/lib/transcript-utils";
+import { restartJob } from "@/lib/job-restart";
+import { computeEstimate } from "@/lib/eta";
+import { fetchYouTubeDuration } from "@/lib/youtube";
 
 const ORCHESTRATOR_URL =
   process.env.ORCHESTRATION_API_URL ||
@@ -94,8 +97,9 @@ export async function POST(request: NextRequest) {
 }
 
 /**
- * Restart a stuck / failed job. Reuses the existing filter_jobs row but swaps in
- * the new orchestrator job_id so progress continues to be tracked on the same record.
+ * Restart a stuck / failed job. Reuses the existing filter_jobs row and keeps
+ * `job_id` stable (so the Chrome extension's polling URL keeps working). Only
+ * the internal `orchestrator_job_id` is swapped to the new orchestrator-side id.
  */
 async function handleRestart(
   requestId: string,
@@ -133,121 +137,34 @@ async function handleRestart(
     );
   }
 
-  // Reset the row so the stale-job detector doesn't immediately re-flag it.
-  // Keep id + user_id so filter_history foreign keys remain intact.
-  const { error: resetError } = await supabase
-    .from("filter_jobs")
-    .update({
-      status: "pending",
-      progress: 0,
-      error: null,
-      completed_at: null,
-      created_at: new Date().toISOString(),
-      auto_retry_count: 0,
-      needs_review: false,
-      last_auto_retry_at: null,
-    })
-    .eq("id", job.id);
+  log(requestId, "Calling restartJob helper", { youtube_id: job.youtube_id });
 
-  if (resetError) {
-    log(requestId, "Failed to reset job row", { error: resetError.message });
-    return NextResponse.json(
-      { error: "Failed to reset job state" },
-      { status: 500 }
-    );
-  }
-
-  // Call the orchestrator with force:true so it doesn't return a stale in-flight job.
-  log(requestId, "Calling orchestrator for restart", { youtube_id: job.youtube_id });
-
-  let orchResponse: Response;
-  try {
-    orchResponse = await fetchWithRetry(
-      `${ORCHESTRATOR_URL}/api/filter`,
-      {
-        method: "POST",
-        headers: orchHeaders,
-        body: JSON.stringify({ youtube_id: job.youtube_id, force: true }),
-      },
-      {
-        maxAttempts: 3,
-        initialDelayMs: 1000,
-      }
-    );
-  } catch (fetchError) {
-    log(requestId, "Orchestrator unreachable on restart", {
-      error: fetchError instanceof Error ? fetchError.message : String(fetchError),
-    });
-    if (isRetryableError(fetchError)) {
-      return NextResponse.json(
-        {
-          error: "Orchestrator temporarily unavailable. Please try again in a moment.",
-          error_code: "ORCHESTRATOR_UNAVAILABLE",
-        },
-        { status: 503 }
-      );
+  const result = await restartJob(
+    supabase,
+    {
+      id: job.id,
+      job_id: job.job_id,
+      orchestrator_job_id: job.orchestrator_job_id,
+      youtube_id: job.youtube_id,
+      auto_retry_count: job.auto_retry_count,
+    },
+    {
+      autoRetry: false,
+      reason: "user-initiated-restart",
+      orchHeaders,
     }
+  );
+
+  if (!result.success) {
     return NextResponse.json(
-      { error: "Failed to reach orchestrator" },
-      { status: 502 }
+      { error: result.error, error_code: result.error_code },
+      { status: result.http_status || 502 }
     );
   }
-
-  const orchData = await orchResponse.json();
-  if (!orchResponse.ok) {
-    log(requestId, "Orchestrator rejected restart", {
-      status: orchResponse.status,
-      error: orchData.error,
-    });
-    // Mark the job as failed again with the new error so the UI reflects it.
-    await supabase
-      .from("filter_jobs")
-      .update({
-        status: "failed",
-        error: orchData.error || "Orchestrator rejected restart",
-      })
-      .eq("id", job.id);
-    return NextResponse.json(
-      {
-        error: orchData.error || "Orchestrator rejected the restart",
-        error_code: orchData.error_code,
-      },
-      { status: orchResponse.status }
-    );
-  }
-
-  // Orchestrator may return a new job_id (most common) or keep the same one.
-  const newJobId: string = orchData.job_id || job.job_id;
-  const newStatus: string = orchData.status || "processing";
-
-  const { error: updateError } = await supabase
-    .from("filter_jobs")
-    .update({
-      job_id: newJobId,
-      status: newStatus,
-      progress: 0,
-    })
-    .eq("id", job.id);
-
-  if (updateError) {
-    log(requestId, "Failed to write new job_id to filter_jobs", {
-      error: updateError.message,
-    });
-    return NextResponse.json(
-      { error: "Failed to update job record" },
-      { status: 500 }
-    );
-  }
-
-  log(requestId, "Restart complete", {
-    oldJobId: job.job_id,
-    newJobId,
-    status: newStatus,
-  });
 
   return NextResponse.json({
-    status: newStatus,
-    job_id: newJobId,
+    status: result.status,
+    job_id: job.job_id,
     youtube_id: job.youtube_id,
     message: "Job restarted",
   });
@@ -272,7 +189,7 @@ async function handleRetranscribe(
   // Ownership check: user must have previously filtered this video.
   const { data: video } = await supabase
     .from("videos")
-    .select("id, youtube_id, storage_path, transcript")
+    .select("id, youtube_id, storage_path, transcript, duration_seconds")
     .eq("youtube_id", youtubeIdParam)
     .single();
 
@@ -436,8 +353,21 @@ async function handleRetranscribe(
 
   // Processing — record the new job flagged as a retranscribe.
   if (orchData.status === "processing" && orchData.job_id) {
+    // Compute ETA so the stuck-job watchdog can auto-restart a hung retranscribe
+    // just like it does for first-time filter jobs.
+    let durationForEta: number = video.duration_seconds || 0;
+    if (!durationForEta && youtubeIdParam) {
+      try {
+        durationForEta = await fetchYouTubeDuration(youtubeIdParam);
+      } catch {
+        // Best-effort; if we can't resolve duration, skip ETA.
+      }
+    }
+    const etaSeconds = computeEstimate(durationForEta);
+
     const { error: insertError } = await supabase.from("filter_jobs").upsert({
       job_id: orchData.job_id,
+      orchestrator_job_id: orchData.job_id,
       user_id: userId,
       youtube_id: youtubeIdParam,
       filter_type: "mute",
@@ -445,6 +375,7 @@ async function handleRetranscribe(
       status: "processing",
       progress: 0,
       is_retranscribe: true,
+      eta_seconds: etaSeconds,
       created_at: new Date().toISOString(),
     });
 
