@@ -32,7 +32,7 @@ The website is a thin client for the orchestrator service. ElevenLabs itself liv
 
 `filter_jobs` — id (UUID PK), job_id (text unique, stable client-facing id), `orchestrator_job_id` (text, current orchestrator-side id — may differ from job_id after auto-restart), user_id, youtube_id, filter_type, custom_words, status, progress, credits_used, error, auto_retry_count, needs_review, last_auto_retry_at, `eta_seconds` (expected completion time at creation), created_at, completed_at, is_retranscribe.
 
-`videos` — youtube_id (unique), title/channel/duration/thumbnail, `transcript` (JSONB), `storage_path` (to the audio file in Supabase Storage), cached_at.
+`videos` — youtube_id (unique), title/channel/duration/thumbnail, `transcript` (JSONB), cached_at. (The `storage_path` column still exists but is no longer written or read by the website — ElevenLabs ingests YouTube URLs directly, so there's no downloaded audio file on our side.)
 
 `filter_history` — per-user per-video record of each filter run, with credits_used.
 
@@ -47,7 +47,7 @@ The website is a thin client for the orchestrator service. ElevenLabs itself liv
 | 1 | No user-facing way to recover from a stuck/failed job — only admins could retry. | **Fixed**: customer-facing restart via `/api/filter/retry?action=restart`, plus a server-side ETA-overrun watchdog (Section 7). |
 | 2 | Re-transcribing burns ElevenLabs minutes on us, so it can't be exposed to customers. | **Admin-only** — surfaced on the admin filter-jobs list and detail pages. |
 | 3 | `filter/status` always deducts credits on completion — doing that on a retranscribe would double-charge the customer. | **Fixed** by the `is_retranscribe` flag, set by the admin retranscribe handler. |
-| 4 | `storage_path` on `videos` can be NULL even when a download exists; admin UI falls back to progress-based inference. | **Noted** — orchestrator-side; not touched here. |
+| 4 | Admin UI had a "Download Available / No Download" badge and a `has_download` inference based on `videos.storage_path` + progress. | **Removed** — ElevenLabs ingests YouTube URLs directly, so the website no longer manages or tracks a downloaded audio file. |
 | 5 | SSE stream (`/api/filter/status/{jobId}/stream`) polls the orchestrator internally rather than being pushed — so "live" is only as fresh as the proxy's poll interval. | **Noted** — orchestrator-side; not touched here. |
 | 6 | No cleanup of orphan `videos` rows or Supabase Storage objects after long periods of disuse. | **Noted**. |
 | 7 | `prepareTranscriptForCache` strips character-level timing to reduce payload; long videos fall back to linear estimation. | **Noted** — existing behavior. |

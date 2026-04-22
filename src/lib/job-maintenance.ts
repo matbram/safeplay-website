@@ -396,20 +396,7 @@ export async function runJobMaintenance(): Promise<MaintenanceResults> {
 
       // Attempt auto-retry — same as clicking retry in the admin UI
       try {
-        // Clear cached video data
-        try {
-          const { data: files } = await supabase.storage
-            .from("videos")
-            .list(youtubeId);
-          if (files && files.length > 0) {
-            await supabase.storage
-              .from("videos")
-              .remove(files.map((f) => `${youtubeId}/${f.name}`));
-          }
-        } catch {
-          // Storage cleanup is best-effort
-        }
-
+        // Clear cached video data so the orchestrator reprocesses from scratch.
         await supabase
           .from("videos")
           .delete()

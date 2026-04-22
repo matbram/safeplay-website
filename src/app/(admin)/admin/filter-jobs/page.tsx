@@ -60,7 +60,6 @@ interface FilterJob {
   completed_at: string | null;
   resolved: boolean;
   stale: boolean;
-  has_download: boolean;
   has_transcript: boolean;
   needs_review: boolean;
   auto_retry_count: number;
@@ -852,7 +851,7 @@ export default function FilterJobsPage() {
         open={!!retranscribeTarget}
         onOpenChange={(open) => !open && setRetranscribeTarget(null)}
         title="Retranscribe video"
-        description={`Re-run ElevenLabs against ${retranscribeTarget?.youtube_id}. Any existing transcript will be replaced. If the audio file is still cached the download is skipped, otherwise it re-downloads first. The customer is not re-charged.`}
+        description={`Re-run ElevenLabs against ${retranscribeTarget?.youtube_id}. Any existing transcript will be replaced. The customer is not re-charged.`}
         variant="danger"
         confirmText="Retranscribe"
         onConfirm={() => {

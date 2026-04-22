@@ -15,7 +15,6 @@ import {
   X,
   Clock,
   AlertTriangle,
-  HardDrive,
   User,
   Calendar,
   Hash,
@@ -53,7 +52,6 @@ interface JobDetail {
   completed_at: string | null;
   resolved: boolean;
   stale: boolean;
-  has_download: boolean;
 }
 
 interface VideoInfo {
@@ -62,8 +60,6 @@ interface VideoInfo {
   duration_seconds: number;
   thumbnail_url: string;
   has_transcript: boolean;
-  has_storage_file: boolean;
-  storage_path: string | null;
   cached_at: string;
 }
 
@@ -81,7 +77,6 @@ interface OrchestratorVideo {
   youtube_id?: string;
   status?: string;
   error_message?: string;
-  storage_path?: string;
   processing_started_at?: string;
   processing_completed_at?: string;
 }
@@ -488,23 +483,6 @@ export default function FilterJobDetailPage() {
                   Stuck
                 </Badge>
               )}
-              {job.has_download ? (
-                <Badge
-                  variant="outline"
-                  className="text-sm px-3 py-1 bg-success/10 text-success border-success/20"
-                >
-                  <HardDrive className="w-4 h-4 mr-1.5" />
-                  Download Available
-                </Badge>
-              ) : (
-                <Badge
-                  variant="outline"
-                  className="text-sm px-3 py-1 bg-muted text-muted-foreground"
-                >
-                  <HardDrive className="w-4 h-4 mr-1.5" />
-                  No Download
-                </Badge>
-              )}
             </div>
 
             {/* Action Buttons */}
@@ -649,26 +627,6 @@ export default function FilterJobDetailPage() {
                   )}
                 </p>
               </div>
-              <div className="p-3 rounded-lg bg-muted/50">
-                <p className="text-xs text-muted-foreground">Storage File</p>
-                <p className="text-sm font-medium">
-                  {video?.has_storage_file ? (
-                    <span className="text-success">Exists</span>
-                  ) : job.has_download ? (
-                    <span className="text-warning">Inferred</span>
-                  ) : (
-                    <span className="text-muted-foreground">Not found</span>
-                  )}
-                </p>
-              </div>
-              {video?.storage_path && (
-                <div className="p-3 rounded-lg bg-muted/50 col-span-2">
-                  <p className="text-xs text-muted-foreground">Storage Path</p>
-                  <p className="text-xs font-mono truncate">
-                    {video.storage_path}
-                  </p>
-                </div>
-              )}
             </div>
           </CardContent>
         </Card>
@@ -866,15 +824,6 @@ export default function FilterJobDetailPage() {
                         {orchestratorStatus.video.status || "Unknown"}
                       </p>
                     </div>
-                    <div className="p-3 rounded-lg bg-muted/50">
-                      <p className="text-xs text-muted-foreground">Storage Path</p>
-                      <p className={cn(
-                        "text-xs font-mono truncate",
-                        orchestratorStatus.video.storage_path ? "text-success" : "text-muted-foreground"
-                      )}>
-                        {orchestratorStatus.video.storage_path || "None"}
-                      </p>
-                    </div>
                     {orchestratorStatus.video.processing_started_at && (
                       <div className="p-3 rounded-lg bg-muted/50">
                         <p className="text-xs text-muted-foreground">Processing Started</p>
@@ -1004,7 +953,7 @@ export default function FilterJobDetailPage() {
         open={retranscribeOpen}
         onOpenChange={setRetranscribeOpen}
         title="Retranscribe video"
-        description={`Re-run ElevenLabs against ${job.youtube_id}. Any existing transcript will be replaced. If the audio file is still cached the download is skipped, otherwise it re-downloads first. The customer is not re-charged.`}
+        description={`Re-run ElevenLabs against ${job.youtube_id}. Any existing transcript will be replaced. The customer is not re-charged.`}
         variant="danger"
         confirmText="Retranscribe"
         onConfirm={() =>

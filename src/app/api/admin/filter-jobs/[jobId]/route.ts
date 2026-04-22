@@ -61,49 +61,13 @@ export async function GET(
         .single(),
       supabase
         .from("videos")
-        .select("youtube_id, title, channel_name, duration_seconds, thumbnail_url, transcript, storage_path, cached_at")
+        .select("youtube_id, title, channel_name, duration_seconds, thumbnail_url, transcript, cached_at")
         .eq("youtube_id", job.youtube_id)
         .single(),
     ]);
 
     const profile = profileResult.data;
     const videoRecord = videoResult.data;
-
-    // Determine if download file exists:
-    // 1. Check if orchestrator stored a storage_path in the videos table
-    // 2. If storage_path exists, verify the file is actually in Supabase Storage
-    // 3. Fall back to progress-based inference
-    let hasDownload = false;
-    let storageFileExists = false;
-    const storagePath = videoRecord?.storage_path;
-
-    if (storagePath) {
-      // Verify the file actually exists in the 'videos' storage bucket
-      try {
-        // storage_path could be like "youtube_id/audio.m4a" - extract folder and filename
-        const lastSlash = storagePath.lastIndexOf("/");
-        const folder = lastSlash > 0 ? storagePath.substring(0, lastSlash) : "";
-        const filename = lastSlash > 0 ? storagePath.substring(lastSlash + 1) : storagePath;
-
-        const { data: files } = await supabase.storage
-          .from("videos")
-          .list(folder, { limit: 10, search: filename });
-
-        storageFileExists = !!(files && files.length > 0);
-        hasDownload = storageFileExists;
-      } catch {
-        // Storage check failed - fall back to storage_path existence
-        hasDownload = true;
-      }
-    }
-
-    // Fall back to progress-based inference if no storage_path
-    if (!storagePath) {
-      hasDownload =
-        job.status === "completed" ||
-        job.status === "transcribing" ||
-        (job.progress != null && job.progress > 35);
-    }
 
     // Check if resolved (another job for same video succeeded or transcript exists)
     let resolved = false;
@@ -201,14 +165,6 @@ export async function GET(
       orchestratorError = `Unreachable: ${err instanceof Error ? err.message : String(err)}`;
     }
 
-    // Re-check download status if orchestrator reports it
-    if (orchestratorStatus?.video?.storage_path || orchestratorStatus?.storage_path) {
-      hasDownload = true;
-    }
-    if (liveStatus === "transcribing" || liveStatus === "completed" || liveProgress > 35) {
-      hasDownload = true;
-    }
-
     // Auto-save transcript: if orchestrator has a transcript but local DB doesn't, save it now
     let transcriptSaved = false;
     if (
@@ -228,9 +184,6 @@ export async function GET(
         };
 
         // Preserve existing video metadata or use orchestrator data
-        if (orchestratorStatus.video?.storage_path || orchestratorStatus.storage_path) {
-          upsertData.storage_path = orchestratorStatus.video?.storage_path || orchestratorStatus.storage_path;
-        }
         if (!videoRecord?.title || videoRecord.title === "Unknown Video") {
           const orchTitle = (orchestratorStatus.transcript as Record<string, unknown>)?.title as string
             || orchestratorStatus.video?.title;
@@ -292,7 +245,6 @@ export async function GET(
         user_display_name: profile?.display_name || null,
         resolved,
         stale: isStale,
-        has_download: hasDownload,
       },
       video: videoRecord
         ? {
@@ -301,8 +253,6 @@ export async function GET(
             duration_seconds: videoRecord.duration_seconds,
             thumbnail_url: videoRecord.thumbnail_url,
             has_transcript: !!videoRecord.transcript || transcriptSaved,
-            has_storage_file: storageFileExists,
-            storage_path: storagePath || null,
             cached_at: videoRecord.cached_at,
           }
         : (() => {
@@ -317,8 +267,6 @@ export async function GET(
                 : 0,
               thumbnail_url: `https://img.youtube.com/vi/${job.youtube_id}/hqdefault.jpg`,
               has_transcript: transcriptSaved,
-              has_storage_file: false,
-              storage_path: null,
               cached_at: transcriptSaved ? new Date().toISOString() : null,
             };
           })(),
