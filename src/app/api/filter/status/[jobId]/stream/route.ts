@@ -313,6 +313,7 @@ export async function GET(
         progress: 100,
         message: "Complete!",
         credits_used: jobRecord.credits_used || 0,
+        eta_seconds: jobRecord.eta_seconds ?? null,
       }), {
         status: 200,
         headers: { "Content-Type": "application/json" },
@@ -457,6 +458,11 @@ export async function GET(
 
               const eventData = JSON.parse(jsonStr);
               log(requestId, "SSE event", { type: eventData.type || 'unknown', status: eventData.status });
+
+              // Attach the job's ETA so the Chrome extension can time its own
+              // in-session retry without a separate API call.
+              eventData.eta_seconds = jobRecord.eta_seconds ?? null;
+              eventData.created_at = jobRecord.created_at;
 
               // Map progress for progress events
               if (eventData.status && eventData.progress !== undefined) {

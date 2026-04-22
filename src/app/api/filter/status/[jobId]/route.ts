@@ -99,6 +99,7 @@ export async function GET(
         progress: 100,
         message: "Complete!",
         credits_used: jobRecord.credits_used || 0,
+        eta_seconds: jobRecord.eta_seconds ?? null,
       });
     }
 
@@ -438,13 +439,18 @@ export async function GET(
       });
     }
 
-    // Return current status
+    // Return current status. `eta_seconds` lets the Chrome extension time its
+    // own in-session retry (one force-restart after ETA+30s, then "check back
+    // later" — the server-side /api/cron/job-maintenance sweep handles the
+    // background retry guarantee).
     log(requestId, "Returning in-progress status", { status: data.status, progress: displayProgress });
     return NextResponse.json({
       status: data.status,
       progress: displayProgress,
       message: displayMessage,
       video: data.video,
+      eta_seconds: jobRecord.eta_seconds ?? null,
+      created_at: jobRecord.created_at,
     });
   } catch (error) {
     log(requestId, "EXCEPTION", { error: String(error) });

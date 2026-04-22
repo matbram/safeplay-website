@@ -99,6 +99,29 @@ export async function POST(request: NextRequest) {
       });
     }
 
+    // Dedupe: if this user already has a non-terminal filter job for this video
+    // (e.g. they closed the YouTube tab during a long transcription and came
+    // back), rejoin it instead of kicking off a second orchestrator run.
+    const { data: inFlightJob } = await supabase
+      .from("filter_jobs")
+      .select("job_id, status")
+      .eq("user_id", auth.user.id)
+      .eq("youtube_id", youtube_id)
+      .in("status", ["pending", "processing", "downloading", "transcribing"])
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (inFlightJob) {
+      log(requestId, "Rejoining in-flight filter job", { jobId: inFlightJob.job_id, status: inFlightJob.status });
+      return NextResponse.json({
+        status: inFlightJob.status,
+        job_id: inFlightJob.job_id,
+        youtube_id: youtube_id,
+        message: "Rejoined in-flight filter job",
+      });
+    }
+
     // Video not in our cache - call orchestrator to start filtering with retry logic
     log(requestId, "Video not cached - calling orchestrator", { url: ORCHESTRATOR_URL });
 
