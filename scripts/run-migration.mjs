@@ -47,6 +47,12 @@ async function runMigration() {
     await client.query(sql);
     console.log('[Migration] Profanity engine schema applied successfully.');
 
+    // Apply filter_jobs migrations (idempotent column additions + indexes).
+    const filterJobsFile = join(__dirname, '..', 'supabase-filter-jobs.sql');
+    const filterJobsSql = readFileSync(filterJobsFile, 'utf-8');
+    await client.query(filterJobsSql);
+    console.log('[Migration] filter_jobs schema applied successfully.');
+
     // Verify tables were created
     const result = await client.query(`
       SELECT table_name FROM information_schema.tables
@@ -56,6 +62,18 @@ async function runMigration() {
     `);
 
     console.log('[Migration] Verified tables:', result.rows.map(r => r.table_name).join(', '));
+
+    // Verify filter_jobs has the columns the app expects.
+    const filterJobsCols = await client.query(`
+      SELECT column_name FROM information_schema.columns
+      WHERE table_schema = 'public' AND table_name = 'filter_jobs'
+      AND column_name IN ('orchestrator_job_id', 'eta_seconds', 'is_retranscribe', 'auto_retry_count')
+      ORDER BY column_name;
+    `);
+    console.log(
+      '[Migration] filter_jobs columns present:',
+      filterJobsCols.rows.map((r) => r.column_name).join(', ')
+    );
 
     // Check seed data counts
     const bucketCount = await client.query('SELECT COUNT(*) FROM public.profanity_buckets');

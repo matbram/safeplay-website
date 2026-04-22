@@ -82,16 +82,15 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // Check video records for all youtube_ids in this page (for resolved + download + transcript detection)
+    // Check video records for all youtube_ids in this page (for resolved + transcript detection)
     const pageYoutubeIds = [...new Set((jobs || []).map((j) => j.youtube_id))];
     let resolvedIds = new Set<string>();
-    let downloadedIds = new Set<string>();
     let transcriptIds = new Set<string>();
 
     if (pageYoutubeIds.length > 0) {
       const { data: videoRecords } = await supabase
         .from("videos")
-        .select("youtube_id, transcript, storage_path")
+        .select("youtube_id, transcript")
         .in("youtube_id", pageYoutubeIds);
 
       if (videoRecords) {
@@ -100,7 +99,6 @@ export async function GET(request: NextRequest) {
             resolvedIds.add(v.youtube_id);
             transcriptIds.add(v.youtube_id);
           }
-          if (v.storage_path) downloadedIds.add(v.youtube_id);
         });
       }
     }
@@ -192,20 +190,11 @@ export async function GET(request: NextRequest) {
         ) &&
         now - new Date(job.created_at).getTime() > STALE_THRESHOLD_MS;
 
-      // Check if a downloaded file exists in Supabase Storage (storage_path set by orchestrator)
-      // Fall back to progress-based inference if no storage record exists
-      const hasDownload =
-        downloadedIds.has(job.youtube_id) ||
-        job.status === "transcribing" ||
-        (job.status === "completed") ||
-        (job.progress != null && job.progress > 35);
-
       return {
         ...job,
         user_email: userMap[job.user_id] || "Unknown",
         resolved: job.status === "failed" && resolvedIds.has(job.youtube_id),
         stale: isStale,
-        has_download: hasDownload,
         has_transcript: transcriptIds.has(job.youtube_id),
         needs_review: job.needs_review || false,
         auto_retry_count: job.auto_retry_count || 0,
@@ -433,20 +422,6 @@ export async function POST(request: NextRequest) {
 
         // Delete associated video cache if exists
         if (job.youtube_id) {
-          // Delete the storage file first (e.g. youtube_id/audio.m4a)
-          try {
-            const { data: files } = await supabase.storage
-              .from("videos")
-              .list(job.youtube_id);
-            if (files && files.length > 0) {
-              await supabase.storage
-                .from("videos")
-                .remove(files.map((f) => `${job.youtube_id}/${f.name}`));
-            }
-          } catch {
-            // Storage cleanup is best-effort
-          }
-
           await supabase
             .from("videos")
             .delete()
@@ -495,20 +470,7 @@ export async function POST(request: NextRequest) {
           targetYoutubeId = job.youtube_id;
         }
 
-        // Delete existing storage file and cached video so orchestrator will reprocess
-        try {
-          const { data: files } = await supabase.storage
-            .from("videos")
-            .list(targetYoutubeId);
-          if (files && files.length > 0) {
-            await supabase.storage
-              .from("videos")
-              .remove(files.map((f) => `${targetYoutubeId}/${f.name}`));
-          }
-        } catch {
-          // Storage cleanup is best-effort
-        }
-
+        // Delete cached video so the orchestrator reprocesses from scratch.
         await supabase
           .from("videos")
           .delete()
@@ -556,13 +518,14 @@ export async function POST(request: NextRequest) {
           );
         }
 
-        // Update or create the job record
+        // Update or create the job record. Keep client-facing job_id stable;
+        // only swap orchestrator_job_id so polling URLs keep working.
         if (job_id) {
           await supabase
             .from("filter_jobs")
             .update({
               status: orchData.status || "processing",
-              job_id: orchData.job_id || job_id,
+              orchestrator_job_id: orchData.job_id || job_id,
             })
             .eq("job_id", job_id);
         }
@@ -589,12 +552,12 @@ export async function POST(request: NextRequest) {
 
             if (!upsertError) {
               transcriptSaved = true;
-              // Mark job as completed
+              // Mark job as completed (match on the stable client-facing job_id)
               if (job_id) {
                 await supabase
                   .from("filter_jobs")
                   .update({ status: "completed", progress: 100, completed_at: new Date().toISOString() })
-                  .eq("job_id", orchData.job_id || job_id);
+                  .eq("job_id", job_id);
               }
             }
           } catch (err) {
@@ -656,7 +619,9 @@ export async function POST(request: NextRequest) {
           .update({ transcript: null })
           .eq("youtube_id", targetYoutubeId);
 
-        // Reset job (update created_at so stale check doesn't immediately flag it)
+        // Reset job (update created_at so stale check doesn't immediately flag it).
+        // Set is_retranscribe=true so /api/filter/status skips credit deduction on
+        // completion — the customer already paid for the original run.
         if (job_id) {
           await supabase
             .from("filter_jobs")
@@ -666,6 +631,7 @@ export async function POST(request: NextRequest) {
               error: null,
               completed_at: null,
               created_at: new Date().toISOString(),
+              is_retranscribe: true,
             })
             .eq("job_id", job_id);
         }
@@ -679,7 +645,8 @@ export async function POST(request: NextRequest) {
           retranscribeHeaders["Authorization"] = `Bearer ${retranscribeToken}`;
         }
 
-        // Call orchestrator - it will see the file exists and skip download
+        // Call orchestrator without force so it can reuse whatever it has cached
+        // on its side (transcript gone from our DB means it'll re-run ElevenLabs).
         const orchResponse = await fetch(`${ORCHESTRATOR_URL}/api/filter`, {
           method: "POST",
           headers: retranscribeHeaders,
@@ -703,7 +670,7 @@ export async function POST(request: NextRequest) {
             .from("filter_jobs")
             .update({
               status: orchData.status || "processing",
-              job_id: orchData.job_id || job_id,
+              orchestrator_job_id: orchData.job_id || job_id,
             })
             .eq("job_id", job_id);
         }
@@ -729,7 +696,7 @@ export async function POST(request: NextRequest) {
                 await supabase
                   .from("filter_jobs")
                   .update({ status: "completed", progress: 100, completed_at: new Date().toISOString() })
-                  .eq("job_id", orchData.job_id || job_id);
+                  .eq("job_id", job_id);
               }
             }
           } catch (err) {
@@ -788,7 +755,8 @@ export async function POST(request: NextRequest) {
           saveHeaders["Authorization"] = `Bearer ${saveToken}`;
         }
 
-        const saveOrchResponse = await fetch(`${ORCHESTRATOR_URL}/api/jobs/${job_id}`, {
+        const saveOrchestratorJobId: string = saveJob.orchestrator_job_id || saveJob.job_id;
+        const saveOrchResponse = await fetch(`${ORCHESTRATOR_URL}/api/jobs/${saveOrchestratorJobId}`, {
           method: "GET",
           headers: saveHeaders,
           signal: AbortSignal.timeout(10000),
@@ -821,9 +789,6 @@ export async function POST(request: NextRequest) {
           cached_at: new Date().toISOString(),
         };
 
-        if (saveOrchData.video?.storage_path || saveOrchData.storage_path) {
-          saveUpsertData.storage_path = saveOrchData.video?.storage_path || saveOrchData.storage_path;
-        }
         if (saveOrchData.transcript?.title || saveOrchData.video?.title) {
           saveUpsertData.title = saveOrchData.transcript?.title || saveOrchData.video?.title;
         }

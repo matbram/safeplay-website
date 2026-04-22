@@ -1,6 +1,8 @@
 import { createServiceClient } from "@/lib/supabase/server";
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 import { prepareTranscriptForCache } from "@/lib/transcript-utils";
+import { ETA_OVERRUN_BUFFER_SECONDS, ACTIVE_STATUSES } from "@/lib/eta";
+import { restartJob } from "@/lib/job-restart";
 
 const ORCHESTRATOR_URL =
   process.env.ORCHESTRATION_API_URL ||
@@ -119,7 +121,7 @@ export async function runJobMaintenance(): Promise<MaintenanceResults> {
   // ─────────────────────────────────────────────────────
   const { data: inProgressJobs } = await supabase
     .from("filter_jobs")
-    .select("id, job_id, youtube_id, user_id")
+    .select("id, job_id, orchestrator_job_id, youtube_id, user_id")
     .in("status", ["processing", "pending", "downloading", "transcribing"]);
 
   if (inProgressJobs && inProgressJobs.length > 0) {
@@ -127,10 +129,11 @@ export async function runJobMaintenance(): Promise<MaintenanceResults> {
 
     for (const job of inProgressJobs) {
       results.checked_in_progress++;
+      const orchestratorJobId = job.orchestrator_job_id || job.job_id;
 
       try {
         const statusResponse = await fetch(
-          `${ORCHESTRATOR_URL}/api/jobs/${job.job_id}`,
+          `${ORCHESTRATOR_URL}/api/jobs/${orchestratorJobId}`,
           {
             method: "GET",
             headers: orchHeaders,
@@ -393,20 +396,7 @@ export async function runJobMaintenance(): Promise<MaintenanceResults> {
 
       // Attempt auto-retry — same as clicking retry in the admin UI
       try {
-        // Clear cached video data
-        try {
-          const { data: files } = await supabase.storage
-            .from("videos")
-            .list(youtubeId);
-          if (files && files.length > 0) {
-            await supabase.storage
-              .from("videos")
-              .remove(files.map((f) => `${youtubeId}/${f.name}`));
-          }
-        } catch {
-          // Storage cleanup is best-effort
-        }
-
+        // Clear cached video data so the orchestrator reprocesses from scratch.
         await supabase
           .from("videos")
           .delete()
@@ -453,12 +443,14 @@ export async function runJobMaintenance(): Promise<MaintenanceResults> {
           continue;
         }
 
-        // Update job with orchestrator response
+        // Update job with orchestrator response. Keep client-facing job_id
+        // stable — only swap the orchestrator-side id so the Chrome extension's
+        // polling URL keeps working across auto-retries.
         await supabase
           .from("filter_jobs")
           .update({
             status: orchData.status || "processing",
-            job_id: orchData.job_id || primaryJob.job_id,
+            orchestrator_job_id: orchData.job_id || primaryJob.job_id,
           })
           .eq("id", primaryJob.id);
 
@@ -543,5 +535,115 @@ export async function runJobMaintenance(): Promise<MaintenanceResults> {
   }
 
   log("=== Job Maintenance Complete ===", results as unknown as Record<string, unknown>);
+  return results;
+}
+
+export interface EtaSweepResults {
+  checked: number;
+  restarted: number;
+  escalated: number;
+  errors: string[];
+}
+
+/**
+ * Fast watchdog for jobs whose ElevenLabs transcription has silently hung.
+ *
+ * ElevenLabs is a black box: we only know a job completed when its webhook
+ * fires. If the webhook is dropped or ElevenLabs wedges, the orchestrator has
+ * no signal and the job sits forever. This sweep detects that by comparing
+ * wall-clock elapsed to the ETA we stored at job creation, and auto-restarts
+ * via `restartJob` — which keeps the client-facing `job_id` stable so the
+ * Chrome extension's polling URL doesn't break.
+ *
+ * Designed to run on a short interval (every 30s) separate from the 10-minute
+ * `runJobMaintenance` sweep.
+ */
+export async function sweepEtaOverruns(): Promise<EtaSweepResults> {
+  const supabase = createServiceClient();
+  const results: EtaSweepResults = {
+    checked: 0,
+    restarted: 0,
+    escalated: 0,
+    errors: [],
+  };
+
+  const now = Date.now();
+  // Upper bound on created_at so rows younger than the minimum possible
+  // ETA+buffer are excluded from the query entirely. Actual threshold per row
+  // is rechecked in-process because eta_seconds varies per video.
+  //
+  // Minimum ETA is 25s (formula floor) + buffer = 55s, so anything younger than
+  // that can't possibly have overrun.
+  const candidateCutoff = new Date(now - 55_000).toISOString();
+
+  const { data: candidates, error } = await supabase
+    .from("filter_jobs")
+    .select(
+      "id, job_id, orchestrator_job_id, youtube_id, status, created_at, eta_seconds, auto_retry_count"
+    )
+    .in("status", Array.from(ACTIVE_STATUSES))
+    .not("eta_seconds", "is", null)
+    .lt("created_at", candidateCutoff);
+
+  if (error) {
+    results.errors.push(`query: ${error.message}`);
+    return results;
+  }
+
+  if (!candidates || candidates.length === 0) {
+    return results;
+  }
+
+  const stuck = candidates.filter((job) => {
+    if (job.eta_seconds == null) return false;
+    const createdAt = new Date(job.created_at).getTime();
+    if (Number.isNaN(createdAt)) return false;
+    const thresholdMs = (job.eta_seconds + ETA_OVERRUN_BUFFER_SECONDS) * 1000;
+    return now - createdAt > thresholdMs;
+  });
+
+  if (stuck.length === 0) {
+    return results;
+  }
+
+  const orchHeaders = await getOrchestratorHeaders();
+
+  for (const job of stuck) {
+    results.checked++;
+    try {
+      const result = await restartJob(
+        supabase,
+        {
+          id: job.id,
+          job_id: job.job_id,
+          orchestrator_job_id: job.orchestrator_job_id,
+          youtube_id: job.youtube_id,
+          auto_retry_count: job.auto_retry_count ?? 0,
+        },
+        {
+          autoRetry: true,
+          reason: "auto-retry-eta-overrun",
+          orchHeaders,
+        }
+      );
+
+      if (result.skipped) continue;
+      if (result.success) {
+        results.restarted++;
+      } else if (result.error?.includes("Max auto-retries")) {
+        results.escalated++;
+      } else {
+        results.errors.push(`${job.job_id}: ${result.error}`);
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      results.errors.push(`${job.job_id}: ${msg}`);
+      log("ETA sweep exception", { job_id: job.job_id, error: msg });
+    }
+  }
+
+  if (results.checked > 0) {
+    log("[auto-retry-eta-overrun] sweep complete", results as unknown as Record<string, unknown>);
+  }
   return results;
 }

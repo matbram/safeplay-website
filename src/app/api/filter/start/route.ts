@@ -3,6 +3,8 @@ import { createServiceClient } from "@/lib/supabase/server";
 import { authenticateRequest } from "@/lib/auth-helper";
 import { fetchWithRetry, isRetryableError } from "@/lib/retry";
 import { prepareTranscriptForCache } from "@/lib/transcript-utils";
+import { computeEstimate } from "@/lib/eta";
+import { fetchYouTubeDuration } from "@/lib/youtube";
 
 const ORCHESTRATOR_URL = process.env.ORCHESTRATION_API_URL || "https://safeplay-orchestrator-80308222868.us-central1.run.app";
 
@@ -314,7 +316,24 @@ export async function POST(request: NextRequest) {
     if (data.status === "processing" && data.job_id) {
       log(requestId, "Processing started - saving job", { jobId: data.job_id });
 
-      const { error: jobError } = await supabase.from("filter_jobs").upsert({
+      // Resolve video duration for ETA calculation. Prefer orchestrator → cached video → YouTube.
+      let durationForEta: number =
+        data.transcript?.duration ||
+        data.video?.duration ||
+        data.duration ||
+        cachedVideo?.duration_seconds ||
+        0;
+      if (!durationForEta && youtube_id) {
+        try {
+          durationForEta = await fetchYouTubeDuration(youtube_id);
+        } catch (err) {
+          log(requestId, "ETA duration lookup failed", { error: String(err) });
+        }
+      }
+      const etaSeconds = computeEstimate(durationForEta);
+      log(requestId, "ETA computed", { durationForEta, etaSeconds });
+
+      const baseJobRow = {
         job_id: data.job_id,
         user_id: auth.user.id,
         youtube_id: youtube_id,
@@ -322,9 +341,34 @@ export async function POST(request: NextRequest) {
         custom_words: custom_words || [],
         status: "processing",
         created_at: new Date().toISOString(),
+      };
+
+      let { error: jobError } = await supabase.from("filter_jobs").upsert({
+        ...baseJobRow,
+        orchestrator_job_id: data.job_id,
+        eta_seconds: etaSeconds,
       });
 
+      // Fallback for environments where the orchestrator_job_id / eta_seconds
+      // migration hasn't been applied yet. Without this, the row would never
+      // be created and subsequent /api/filter/status and /api/filter/events
+      // lookups would 404.
+      if (jobError) {
+        log(requestId, "Job save with new columns failed, retrying with legacy schema", {
+          error: jobError.message,
+        });
+        const fallback = await supabase.from("filter_jobs").upsert(baseJobRow);
+        jobError = fallback.error;
+      }
+
       log(requestId, "Job save result", { success: !jobError, error: jobError?.message });
+
+      if (jobError) {
+        return NextResponse.json(
+          { error: "Failed to save filter job record", error_code: "JOB_PERSIST_FAILED" },
+          { status: 500 }
+        );
+      }
 
       return NextResponse.json({
         status: "processing",

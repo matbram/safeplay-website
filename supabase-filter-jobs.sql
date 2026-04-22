@@ -137,4 +137,23 @@ BEGIN
   IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'filter_jobs' AND column_name = 'last_auto_retry_at') THEN
     ALTER TABLE public.filter_jobs ADD COLUMN last_auto_retry_at TIMESTAMPTZ;
   END IF;
+  -- Retranscribe flag: jobs created by user-initiated "Re-transcribe" on already-filtered videos.
+  -- These are free (user already paid) and bypass credit deduction on completion.
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'filter_jobs' AND column_name = 'is_retranscribe') THEN
+    ALTER TABLE public.filter_jobs ADD COLUMN is_retranscribe BOOLEAN DEFAULT false;
+  END IF;
+  -- Expected completion time in seconds, computed at job creation using the same
+  -- formula the Chrome extension uses for its countdown. The server-side ETA-overrun
+  -- watchdog uses this to detect stuck ElevenLabs transcriptions and auto-restart them.
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'filter_jobs' AND column_name = 'eta_seconds') THEN
+    ALTER TABLE public.filter_jobs ADD COLUMN eta_seconds INTEGER;
+  END IF;
+  -- The orchestrator-side job id this row currently maps to. Separate from `job_id`
+  -- (the stable client-facing id) so that auto-restart can swap the underlying
+  -- orchestrator job without breaking the URL the Chrome extension is polling.
+  -- Backfilled to match job_id for existing rows.
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'filter_jobs' AND column_name = 'orchestrator_job_id') THEN
+    ALTER TABLE public.filter_jobs ADD COLUMN orchestrator_job_id TEXT;
+    UPDATE public.filter_jobs SET orchestrator_job_id = job_id WHERE orchestrator_job_id IS NULL;
+  END IF;
 END $$;
