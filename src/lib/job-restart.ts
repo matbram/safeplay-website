@@ -50,9 +50,14 @@ function log(message: string, data?: Record<string, unknown>) {
 /**
  * Restart a stuck filter job without changing the client-facing `job_id`.
  *
- * Keeps `filter_jobs.job_id` stable (so the Chrome extension's polling URL
- * keeps working) and swaps `filter_jobs.orchestrator_job_id` to the new
- * orchestrator-side id.
+ * Behaves like a fresh filter request end-to-end: deletes the cached `videos`
+ * row so nothing stale sticks around, fires a best-effort `DELETE` to the
+ * orchestrator for the old wedged job, and then calls `POST /api/filter`
+ * **without** `force: true` — matching the code path we've confirmed produces
+ * a genuinely fresh ElevenLabs run (the same path `/api/filter/start` uses).
+ *
+ * The `filter_jobs.job_id` stays stable across all of this so the Chrome
+ * extension's polling URL keeps working; only `orchestrator_job_id` swaps.
  *
  * Race-safe: the reset UPDATE is guarded by the expected `orchestrator_job_id`,
  * so two concurrent watchdogs can't both restart the same job.
@@ -129,7 +134,40 @@ export async function restartJob(
     return { success: true, skipped: true };
   }
 
-  // Call orchestrator with force:true so it doesn't hand back the abandoned job.
+  // Delete the cached videos row so nothing stale is in front of the orchestrator.
+  // If the row doesn't exist this is a no-op. If a completion race rewrites it
+  // milliseconds later, the upsert in /api/filter/status handles that safely.
+  const { error: videosDeleteError } = await supabase
+    .from("videos")
+    .delete()
+    .eq("youtube_id", job.youtube_id);
+  if (videosDeleteError) {
+    log("Videos-row delete failed (continuing)", {
+      job_id: job.job_id,
+      youtube_id: job.youtube_id,
+      error: videosDeleteError.message,
+    });
+  }
+
+  // Best-effort: tell the orchestrator to release the wedged old job. We don't
+  // wait long and we don't care if this fails — it's hygiene, not a blocker.
+  try {
+    await fetch(`${ORCHESTRATOR_URL}/api/jobs/${currentOrchId}`, {
+      method: "DELETE",
+      headers: options.orchHeaders,
+      signal: AbortSignal.timeout(3000),
+    });
+  } catch (cancelError) {
+    log("Orchestrator cancel failed (ignored)", {
+      job_id: job.job_id,
+      orchestrator_job_id: currentOrchId,
+      error: cancelError instanceof Error ? cancelError.message : String(cancelError),
+    });
+  }
+
+  // Call the orchestrator without `force: true` — a plain first-time-style
+  // request. Force:true on a wedged job tended to hand us new ids pointing at
+  // the same stuck ElevenLabs state; a clean request gets a genuinely new run.
   let orchResponse: Response;
   try {
     orchResponse = await fetchWithRetry(
@@ -137,7 +175,7 @@ export async function restartJob(
       {
         method: "POST",
         headers: { "Content-Type": "application/json", ...options.orchHeaders },
-        body: JSON.stringify({ youtube_id: job.youtube_id, force: true }),
+        body: JSON.stringify({ youtube_id: job.youtube_id }),
       },
       { maxAttempts: 3, initialDelayMs: 1000 }
     );
