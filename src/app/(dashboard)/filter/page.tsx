@@ -1,7 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, Suspense } from "react";
-import { useSearchParams, useRouter } from "next/navigation";
+import { useState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -71,24 +70,7 @@ interface SSEEventData {
 }
 
 export default function FilterPage() {
-  // useSearchParams requires a Suspense boundary at prerender time under Next.js 16.
-  return (
-    <Suspense
-      fallback={
-        <div className="flex items-center justify-center min-h-[400px]">
-          <Loader2 className="w-8 h-8 animate-spin text-primary" />
-        </div>
-      }
-    >
-      <FilterPageContent />
-    </Suspense>
-  );
-}
-
-function FilterPageContent() {
   const { credits, loading: userLoading, refetch: refetchUser } = useUser();
-  const searchParams = useSearchParams();
-  const router = useRouter();
   const [url, setUrl] = useState("");
   const [status, setStatus] = useState<FilterStatus>("idle");
   const [filterType, setFilterType] = useState<"mute" | "bleep">("mute");
@@ -153,26 +135,6 @@ function FilterPageContent() {
       }
     }, 5000);
   }, [status, progress]);
-
-  // Deep-link support: /filter?retry_job=<jobId> jumps straight into the processing view
-  // for an already-queued job (used by the history page's Re-transcribe flow).
-  useEffect(() => {
-    const retryJob = searchParams?.get("retry_job");
-    if (!retryJob || jobId === retryJob) return;
-
-    setJobId(retryJob);
-    setStatus("processing");
-    setProgress(0);
-    setProgressMessage("Re-transcribing with the latest engine...");
-    setError("");
-    lastProgressAtRef.current = Date.now();
-    lastProgressValueRef.current = 0;
-    startSSE(retryJob);
-
-    // Strip the param so a refresh doesn't re-trigger this.
-    router.replace("/filter");
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchParams]);
 
   const handleUrlSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

@@ -657,7 +657,9 @@ export async function POST(request: NextRequest) {
           .update({ transcript: null })
           .eq("youtube_id", targetYoutubeId);
 
-        // Reset job (update created_at so stale check doesn't immediately flag it)
+        // Reset job (update created_at so stale check doesn't immediately flag it).
+        // Set is_retranscribe=true so /api/filter/status skips credit deduction on
+        // completion — the customer already paid for the original run.
         if (job_id) {
           await supabase
             .from("filter_jobs")
@@ -667,6 +669,7 @@ export async function POST(request: NextRequest) {
               error: null,
               completed_at: null,
               created_at: new Date().toISOString(),
+              is_retranscribe: true,
             })
             .eq("job_id", job_id);
         }

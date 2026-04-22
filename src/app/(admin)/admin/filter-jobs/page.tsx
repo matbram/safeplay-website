@@ -750,15 +750,16 @@ export default function FilterJobsPage() {
                                 </Button>
                               )}
 
-                              {/* Retranscribe - only if download file exists */}
-                              {(job.status === "failed" || job.stale || (job.status === "completed" && !job.has_transcript)) && job.has_download && (
+                              {/* Retranscribe - admin only, available on any non-active job.
+                                  Re-runs ElevenLabs without re-charging the customer. */}
+                              {!["pending", "processing", "downloading", "transcribing"].includes(job.status) && (
                                 <Button
                                   variant="ghost"
                                   size="icon"
                                   className="h-8 w-8"
                                   disabled={isActionLoading}
                                   onClick={() => setRetranscribeTarget(job)}
-                                  title="Retranscribe only (skip download)"
+                                  title="Retranscribe (re-run ElevenLabs)"
                                 >
                                   <FileAudio className="w-4 h-4" />
                                 </Button>
@@ -850,8 +851,8 @@ export default function FilterJobsPage() {
       <ConfirmModal
         open={!!retranscribeTarget}
         onOpenChange={(open) => !open && setRetranscribeTarget(null)}
-        title="Retranscribe Only"
-        description={`This will resend video ${retranscribeTarget?.youtube_id} for transcription only, skipping the download step. Use this if the download succeeded but transcription failed.`}
+        title="Retranscribe video"
+        description={`Re-run ElevenLabs against ${retranscribeTarget?.youtube_id}. Any existing transcript will be replaced. If the audio file is still cached the download is skipped, otherwise it re-downloads first. The customer is not re-charged.`}
         variant="danger"
         confirmText="Retranscribe"
         onConfirm={() => {

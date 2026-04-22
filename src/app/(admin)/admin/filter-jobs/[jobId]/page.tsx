@@ -524,7 +524,7 @@ export default function FilterJobDetailPage() {
                   Retry
                 </Button>
               )}
-              {(job.status === "failed" || job.stale || (job.status === "completed" && video && !video.has_transcript)) && job.has_download && (
+              {!["pending", "processing", "downloading", "transcribing"].includes(job.status) && (
                 <Button
                   variant="outline"
                   size="sm"
@@ -1003,8 +1003,8 @@ export default function FilterJobDetailPage() {
       <ConfirmModal
         open={retranscribeOpen}
         onOpenChange={setRetranscribeOpen}
-        title="Retranscribe Only"
-        description={`This will resend video ${job.youtube_id} for transcription only, skipping the download step. Use this if the download succeeded but transcription failed.`}
+        title="Retranscribe video"
+        description={`Re-run ElevenLabs against ${job.youtube_id}. Any existing transcript will be replaced. If the audio file is still cached the download is skipped, otherwise it re-downloads first. The customer is not re-charged.`}
         variant="danger"
         confirmText="Retranscribe"
         onConfirm={() =>
