@@ -33,8 +33,6 @@ export async function POST(request: Request) {
 
     log(requestId, "Request body", { hasRefreshToken: !!refreshToken, refreshTokenLength: refreshToken?.length });
 
-    // Note: Supabase refresh tokens are short (~12 chars) - this is normal.
-    // The access_token is the long JWT, not the refresh_token.
     log(requestId, "Refresh token received", {
       length: refreshToken?.length ?? 0,
       preview: refreshToken ? refreshToken.substring(0, 12) : "MISSING",
