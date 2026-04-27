@@ -6,18 +6,11 @@ import { createClient } from "@/lib/supabase/client";
 import { Shield, CheckCircle, XCircle, Loader2, LogIn } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
-
-interface UserProfile {
-  id: string;
-  email: string;
-  display_name: string | null;
-  subscription_tier: string;
-  subscription_status: string;
-  credits: {
-    available: number;
-    used_this_period: number;
-  };
-}
+import {
+  buildExtensionAuthPayload,
+  fetchExtensionProfileData,
+  sendMessageToExtension,
+} from "@/lib/extension-handoff";
 
 function ExtensionAuthContent() {
   const searchParams = useSearchParams();
@@ -51,130 +44,19 @@ function ExtensionAuthContent() {
         return;
       }
 
-      // Session retrieved successfully
-      // Note: Supabase refresh tokens are intentionally short (~12 chars) - this is normal behavior
-
-
       setUserEmail(session.user.email || null);
 
-      // Fetch user profile data
-      let userProfile: UserProfile | null = null;
       try {
-        // Get profile data
-        const { data: profile } = await supabase
-          .from("profiles")
-          .select("id, email, display_name, subscription_tier, subscription_status")
-          .eq("id", session.user.id)
-          .single();
+        const profileData = await fetchExtensionProfileData(supabase, session.user.id);
+        const authPayload = buildExtensionAuthPayload(session, profileData);
 
-        // Get credit balance
-        const { data: credits } = await supabase
-          .from("credit_balances")
-          .select("available_credits, used_this_period")
-          .eq("user_id", session.user.id)
-          .single();
-
-        if (profile) {
-          userProfile = {
-            id: profile.id,
-            email: profile.email,
-            display_name: profile.display_name,
-            subscription_tier: profile.subscription_tier || "individual",
-            subscription_status: profile.subscription_status || "active",
-            credits: {
-              available: credits?.available_credits ?? 0,
-              used_this_period: credits?.used_this_period ?? 0,
-            },
-          };
-        }
-      } catch (err) {
-        console.error("Failed to fetch user profile:", err);
-        // Continue with basic auth even if profile fetch fails
-      }
-
-      // Send credentials to extension
-      try {
-        const availableCredits = userProfile?.credits?.available ?? 0;
-        const usedThisPeriod = userProfile?.credits?.used_this_period ?? 0;
-        const tier = userProfile?.subscription_tier || "individual";
-
-        // Plan allocation based on tier
-        const planAllocation = tier === "family" ? 1500 : 750;
-        const percentConsumed = planAllocation > 0 ? Math.round((usedThisPeriod / planAllocation) * 100) : 0;
-
-        // Build the auth payload matching extension expectations exactly
-        // IMPORTANT: expiresAt must be in MILLISECONDS for JS Date comparison
-        const expiresAtMs = (session.expires_at || 0) * 1000;
-
-        console.log("[ExtensionAuth] Building payload:", {
-          expiresAt_seconds: session.expires_at,
-          expiresAt_ms: expiresAtMs,
-          now_ms: Date.now(),
-          isExpired: expiresAtMs < Date.now(),
-          expiresIn_minutes: Math.round((expiresAtMs - Date.now()) / 60000)
-        });
-
-        const authPayload = {
-          type: "AUTH_TOKEN",
-          token: session.access_token,
-          refreshToken: session.refresh_token,
-          expiresAt: expiresAtMs, // Unix timestamp in MILLISECONDS for JS Date.now() comparison
-          userId: session.user.id,
-          tier: tier,
-          user: {
-            id: session.user.id,
-            email: session.user.email,
-            full_name: userProfile?.display_name || session.user.email?.split("@")[0],
-            avatar_url: null,
-          },
-          subscription: {
-            id: session.user.id,
-            user_id: session.user.id,
-            plan_id: tier,
-            status: userProfile?.subscription_status || "active",
-            plans: {
-              id: tier,
-              name: tier.charAt(0).toUpperCase() + tier.slice(1),
-              monthly_credits: planAllocation,
-            },
-          },
-          userCredits: {
-            user_id: session.user.id,
-            available_credits: availableCredits,
-            used_this_period: usedThisPeriod,
-            rollover_credits: 0,
-          },
-          credits: {
-            available: availableCredits,
-            used_this_period: usedThisPeriod,
-            plan_allocation: planAllocation,
-            percent_consumed: percentConsumed,
-            plan: tier,
-          },
-        };
-
-        // Try to communicate with the extension using chrome.runtime.sendMessage
-        if (typeof window !== "undefined") {
-          const chromeRuntime = (window as typeof window & {
-            chrome?: {
-              runtime?: {
-                sendMessage: (id: string, message: unknown, callback?: (response: unknown) => void) => void
-              }
-            }
-          }).chrome?.runtime;
-
-          if (chromeRuntime?.sendMessage) {
-            chromeRuntime.sendMessage(extensionId, authPayload, (response) => {
-              console.log("Extension response:", response);
-            });
-          }
-        }
+        sendMessageToExtension(extensionId, authPayload);
 
         // Also store in localStorage as fallback for popup-based extensions
-        localStorage.setItem("safeplay_extension_auth", JSON.stringify({
-          ...authPayload,
-          timestamp: Date.now(),
-        }));
+        localStorage.setItem(
+          "safeplay_extension_auth",
+          JSON.stringify({ ...authPayload, timestamp: Date.now() }),
+        );
 
         setStatus("success");
 

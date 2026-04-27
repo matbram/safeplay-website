@@ -31,6 +31,7 @@ import {
 import { cn } from "@/lib/utils";
 import { UserProvider, useUser } from "@/contexts/user-context";
 import { ThemeToggle } from "@/components/ui/theme-toggle";
+import { ExtensionTokenSync } from "@/components/extension-token-sync";
 
 const navigation = [
   { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
@@ -272,6 +273,7 @@ export default function DashboardLayout({
 }) {
   return (
     <UserProvider>
+      <ExtensionTokenSync />
       <DashboardContent>{children}</DashboardContent>
     </UserProvider>
   );
